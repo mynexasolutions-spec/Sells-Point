@@ -41,6 +41,7 @@ export default function DashboardPage() {
     deleteListing,
     renewListing,
     requestFeatured,
+    completeMockPromotionPayment,
     unblockUser,
   } =
     useApp();
@@ -51,9 +52,10 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!currentUser) router.push("/");
+    else if (currentUser.isAdmin) router.replace("/admin");
   }, [currentUser, router]);
 
-  if (!currentUser) return null;
+  if (!currentUser || currentUser.isAdmin) return null;
 
   const myListings = listings.filter((l) => l.sellerId === currentUser.id);
   const active = myListings.filter((l) => l.status === "active");
@@ -178,12 +180,18 @@ export default function DashboardPage() {
                   >
                     <Pencil size={14} /> Edit
                   </button>
-                  {l.featuredStatus === "none" && (
+                  {["none", "rejected"].includes(l.featuredStatus) && (
                     <button
                       onClick={() => requestFeatured(l.id)}
                       className="btn-secondary px-3 py-1.5 text-sm"
                     >
-                      <Sparkles size={14} /> Boost
+                      <Sparkles size={14} /> {l.featuredStatus === "rejected" ? "Request Again" : "Boost"}
+                    </button>
+                  )}
+                  {l.featuredStatus === "pending" && <span className="badge bg-amber-100 text-amber-700">Quote pending</span>}
+                  {l.featuredStatus === "awaiting_payment" && (
+                    <button onClick={() => completeMockPromotionPayment(l.id)} className="btn-primary px-3 py-1.5 text-sm" title="Mock checkout; no real charge">
+                      <Sparkles size={14} /> Pay {formatPrice(l.promotionPrice)} (Mock)
                     </button>
                   )}
                   <button

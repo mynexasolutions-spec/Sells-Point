@@ -7,6 +7,7 @@ const WRITABLE_FIELDS = [
   "price",
   "original_price",
   "category",
+  "subcategory_id",
   "condition",
   "images",
   "video_url",
@@ -67,14 +68,16 @@ export async function POST(request) {
         price: Number(listing.price) || 0,
         original_price: Number(listing.originalPrice) || Number(listing.price) || 0,
         category: listing.category,
+        subcategory_id: listing.subcategoryId || null,
         condition: listing.condition || "Good",
         images: listing.images && listing.images.length ? listing.images : [],
         video_url: listing.video || null,
         location: listing.location || actor.location || "India",
         latitude: typeof listing.latitude === "number" ? listing.latitude : null,
         longitude: typeof listing.longitude === "number" ? listing.longitude : null,
-        featured: !!listing.featured,
+        featured: false,
         featured_status: listing.featured ? "pending" : "none",
+        promotion_requested_at: listing.featured ? new Date().toISOString() : null,
         status: "active",
         expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         views: 0,
@@ -99,7 +102,7 @@ export async function PATCH(request) {
   }
 
   const ownsListing = listing.seller_id === actor.id;
-  if (!ownsListing && !actor.is_admin && !body.skipOwnershipCheck) {
+  if (!ownsListing && !actor.is_admin) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
@@ -125,12 +128,35 @@ export async function PATCH(request) {
     return NextResponse.json({ error: "No valid updates" }, { status: 400 });
   }
 
+  const requestedPromotion = !actor.is_admin && updates.featured_status === "pending";
   if (!actor.is_admin) {
-    delete updates.featured_status;
+    if (!requestedPromotion) delete updates.featured_status;
     delete updates.moderation_note;
     if (updates.status && !["active", "sold"].includes(updates.status)) {
       delete updates.status;
     }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, "category")) {
+    const subcategoryId = Object.prototype.hasOwnProperty.call(updates, "subcategory_id")
+      ? updates.subcategory_id
+      : listing.subcategory_id;
+    if (subcategoryId) {
+      const { data: subcategory } = await supabaseAdmin.from("subcategories").select("category_id").eq("id", subcategoryId).maybeSingle();
+      if (!subcategory || subcategory.category_id !== updates.category) updates.subcategory_id = null;
+    }
+  }
+
+  if (requestedPromotion) {
+    if (!["none", "rejected"].includes(listing.featured_status)) {
+      return NextResponse.json({ error: "Promotion request is already active" }, { status: 409 });
+    }
+    updates.featured = false;
+    updates.promotion_requested_at = new Date().toISOString();
+    updates.promotion_price_inr = null;
+    updates.promotion_quoted_at = null;
+    updates.promotion_paid_at = null;
+    updates.promotion_payment_reference = null;
   }
 
   const { data, error } = await supabaseAdmin

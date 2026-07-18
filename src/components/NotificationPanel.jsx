@@ -19,6 +19,8 @@ function getNotificationIcon(notification) {
         : <Shield size={16} className="text-purple-500" />;
     case "featured_approved":
     case "featured_rejected":
+    case "featured_quote_ready":
+    case "featured_activated":
     case "user_banned":
       return <Shield size={16} className="text-purple-500" />;
     default:
@@ -55,6 +57,10 @@ function getNotificationText(notification, getUserById, getListingById, publicAn
       return listing
         ? `Your listing "${listing.title}" was not approved as featured`
         : "Your listing was not approved as featured";
+    case "featured_quote_ready":
+      return listing ? `Your mock boost quote for "${listing.title}" is ready: ₹${Number(listing.promotionPrice || 0).toLocaleString("en-IN")}` : "Your mock boost quote is ready";
+    case "featured_activated":
+      return listing ? `Mock payment successful — "${listing.title}" is now featured` : "Mock payment successful — your listing is now featured";
     case "user_banned":
       return "Your account has been suspended by admin";
     case "admin":

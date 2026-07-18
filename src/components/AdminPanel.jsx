@@ -26,17 +26,24 @@ import {
   AlertTriangle,
   ExternalLink,
   Upload,
+  Menu,
+  LogOut,
+  Home,
+  Search,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
+import BrandLogo from "@/components/BrandLogo";
+import EditListingModal from "@/components/EditListingModal";
 
 const TABS = [
-  { id: "listings", label: "Listings", icon: LayoutList },
-  { id: "users", label: "Users", icon: Users },
-  { id: "reports", label: "Reports", icon: Flag },
-  { id: "categories", label: "Categories", icon: Tags },
-  { id: "chats", label: "Chat Monitor", icon: MessageCircle },
-  { id: "analytics", label: "Analytics", icon: BarChart3 },
-  { id: "announcements", label: "Announcements", icon: Megaphone },
+  { id: "analytics", label: "Analytics", group: "Main", icon: BarChart3, subtitle: "Marketplace performance and community health at a glance." },
+  { id: "promotions", label: "Promotion Requests", group: "Operations", icon: Sparkles, subtitle: "Review pending featured-ad requests and send mock payment quotes." },
+  { id: "listings", label: "Listings", group: "Operations", icon: LayoutList, subtitle: "Review, moderate, and feature marketplace listings." },
+  { id: "users", label: "Users", group: "Operations", icon: Users, subtitle: "Manage member access, warnings, and account status." },
+  { id: "reports", label: "Reports", group: "Operations", icon: Flag, subtitle: "Investigate and resolve community reports." },
+  { id: "chats", label: "Chat Monitor", group: "Operations", icon: MessageCircle, subtitle: "Monitor marketplace conversations for safety." },
+  { id: "categories", label: "Categories", group: "Content", icon: Tags, subtitle: "Organize the marketplace and category imagery." },
+  { id: "announcements", label: "Announcements", group: "Content", icon: Megaphone, subtitle: "Publish important updates to all users." },
 ];
 
 function formatPrice(value) {
@@ -53,6 +60,7 @@ export default function AdminPanel() {
     users,
     reports,
     categories,
+    subcategories,
     currentUser,
     getUserById,
     getListingById,
@@ -66,6 +74,7 @@ export default function AdminPanel() {
     addCategory,
     updateCategory,
     deleteCategory,
+    mutateSubcategory,
     fetchCategories,
     analytics,
     announcements,
@@ -73,14 +82,25 @@ export default function AdminPanel() {
     createAnnouncement,
     deactivateAnnouncement,
     deleteAnnouncement,
+    logout,
   } = useApp();
   const [tab, setTab] = useState("listings");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editingCat, setEditingCat] = useState(null);
   const [newCat, setNewCat] = useState({ id: "", label: "", icon: "Tag", image_url: "" });
   const [catError, setCatError] = useState("");
   const [catSyncing, setCatSyncing] = useState(false);
   const [catSyncMessage, setCatSyncMessage] = useState("");
   const [catUploading, setCatUploading] = useState(null);
+  const [newSubcategory, setNewSubcategory] = useState({});
+  const [listingSearch, setListingSearch] = useState("");
+  const [listingFilters, setListingFilters] = useState({ status: "", featured: "", category: "", subcategoryId: "" });
+  const [listingPage, setListingPage] = useState(0);
+  const [userSearch, setUserSearch] = useState("");
+  const [userFilter, setUserFilter] = useState("");
+  const [userPage, setUserPage] = useState(0);
+  const [editingListing, setEditingListing] = useState(null);
+  const ADMIN_PAGE_SIZE = 10;
 
   const [monitoredChats, setMonitoredChats] = useState([]);
   const [chatsLoading, setChatsLoading] = useState(false);
@@ -94,6 +114,16 @@ export default function AdminPanel() {
   const otherListings = listings.filter((l) => l.featuredStatus !== "pending");
   const openReports = reports.filter((r) => r.status === "open");
   const closedReports = reports.filter((r) => r.status !== "open");
+  const filteredListings = otherListings.filter((l) => {
+    const seller = getUserById(l.sellerId);
+    return (!listingSearch || `${l.title} ${seller?.name || ""}`.toLowerCase().includes(listingSearch.toLowerCase())) &&
+      (!listingFilters.status || l.status === listingFilters.status) && (!listingFilters.featured || l.featuredStatus === listingFilters.featured) &&
+      (!listingFilters.category || l.category === listingFilters.category) && (!listingFilters.subcategoryId || l.subcategoryId === listingFilters.subcategoryId);
+  });
+  const filteredUsers = users.filter((u) => (!userSearch || `${u.name} ${u.phone}`.toLowerCase().includes(userSearch.toLowerCase())) &&
+    (!userFilter || (userFilter === "admin" ? u.isAdmin : userFilter === "suspended" ? u.isBanned : !u.isBanned && !u.isAdmin)));
+  const pageListings = filteredListings.slice(listingPage * ADMIN_PAGE_SIZE, (listingPage + 1) * ADMIN_PAGE_SIZE);
+  const pageUsers = filteredUsers.slice(userPage * ADMIN_PAGE_SIZE, (userPage + 1) * ADMIN_PAGE_SIZE);
 
   useEffect(() => {
     if (tab === "chats" && currentUser) {
@@ -112,67 +142,47 @@ export default function AdminPanel() {
     }
   }, [tab, currentUser, fetchAnalytics]);
 
+  useEffect(() => {
+    const closeOnEscape = (event) => event.key === "Escape" && setSidebarOpen(false);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, []);
+
+  const activeSection = TABS.find((item) => item.id === tab) || TABS[0];
+  const selectTab = (id) => {
+    setTab(id);
+    setSidebarOpen(false);
+  };
+
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 lg:px-8">
-      <div className="mb-6">
-        <h1 className="font-display text-2xl font-bold text-ink-900">Admin Dashboard</h1>
-        <p className="text-sm text-ink-500">Manage listings, users, and community reports.</p>
-      </div>
+    <div className="admin-shell min-h-screen bg-[#f4f7f5]">
+      {sidebarOpen && <button aria-label="Close navigation" className="fixed inset-0 z-40 bg-ink-950/50 backdrop-blur-sm lg:hidden" onClick={() => setSidebarOpen(false)} />}
+      <aside className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-ink-950 text-white shadow-2xl transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+        <div className="flex h-20 items-center border-b border-white/10 px-6"><div className="rounded-xl bg-white px-3 py-2"><BrandLogo /></div></div>
+        <nav className="flex-1 overflow-y-auto px-4 py-6" aria-label="Admin navigation">
+          {["Main", "Operations", "Content"].map((group) => <div key={group} className="mb-7"><p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.2em] text-ink-400">{group}</p><div className="space-y-1">{TABS.filter((item) => item.group === group).map((item) => { const Icon = item.icon; return <button key={item.id} onClick={() => selectTab(item.id)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-all ${tab === item.id ? "bg-brand-500 text-ink-950 shadow-lg shadow-brand-900/20" : "text-ink-300 hover:bg-white/10 hover:text-white"}`}><Icon size={18} /><span className="flex-1 text-left">{item.label}</span>{item.id === "promotions" && pendingFeatured.length > 0 && <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-amber-400 px-1.5 text-xs font-bold text-ink-950">{pendingFeatured.length}</span>}</button>; })}</div></div>)}
+        </nav>
+        <div className="border-t border-white/10 p-4"><div className="mb-3 flex items-center gap-3 rounded-xl bg-white/5 p-3"><img src={currentUser.avatar} alt="" className="h-10 w-10 rounded-full object-cover ring-2 ring-brand-400" /><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold">{currentUser.name}</p><p className="text-xs text-ink-400">Administrator</p></div></div><button onClick={logout} className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm font-semibold text-ink-300 hover:bg-red-500/10 hover:text-red-300"><LogOut size={17} /> Log out</button></div>
+      </aside>
+      <div className="lg:pl-72">
+        <header className="sticky top-0 z-30 flex min-h-20 items-center justify-between border-b border-ink-100 bg-white/95 px-4 backdrop-blur-xl sm:px-6 lg:px-10"><div className="flex min-w-0 items-center gap-3"><button onClick={() => setSidebarOpen(true)} className="rounded-xl border border-ink-200 p-2 text-ink-700 lg:hidden" aria-label="Open navigation"><Menu size={20} /></button><div className="min-w-0"><h1 className="font-display text-xl font-bold text-ink-950 sm:text-2xl">{activeSection.label}</h1><p className="hidden truncate text-sm text-ink-500 sm:block">{activeSection.subtitle}</p></div></div><Link href="/" className="btn-secondary shrink-0 px-3 py-2 text-sm sm:px-4"><Home size={16} /><span className="hidden sm:inline">View Site</span></Link></header>
+        <main className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
 
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="card flex items-center gap-4 p-4">
-          <div className="icon-tile bg-brand-100 text-brand-600">
-            <Package size={20} />
-          </div>
-          <div>
-            <p className="text-xs font-medium text-ink-500">Active listings</p>
-            <p className="font-display text-2xl font-bold text-ink-900">
-              {listings.filter((l) => l.status === "active").length}
-            </p>
-          </div>
+      {tab === "promotions" && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between"><div><h3 className="flex items-center gap-2 font-display font-bold text-ink-900"><Sparkles size={18} className="text-amber-500" /> Pending Featured Ad Approvals</h3><p className="mt-1 text-sm text-ink-500">Accept a request by setting its mock promotion price, or reject it.</p></div><span className="badge-gold">{pendingFeatured.length} pending</span></div>
+          {pendingFeatured.length === 0 ? <div className="card p-10 text-center"><Sparkles size={30} className="mx-auto mb-3 text-ink-300"/><p className="font-semibold text-ink-700">No pending promotion requests</p><p className="mt-1 text-sm text-ink-400">New featured-ad requests will appear here.</p></div> : <div className="space-y-3">{pendingFeatured.map((listing) => { const seller = getUserById(listing.sellerId); return <div key={listing.id} className="card flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
+            {listing.images?.[0] ? <img src={listing.images[0]} alt="" className="h-24 w-full rounded-xl object-cover sm:h-20 sm:w-24"/> : <div className="flex h-20 w-24 items-center justify-center rounded-xl bg-ink-100 text-ink-400"><Package size={22}/></div>}
+            <div className="min-w-0 flex-1"><Link href={`/product/${listing.id}`} className="font-semibold text-ink-900 hover:underline">{listing.title}</Link><p className="mt-1 text-sm text-ink-500">{formatPrice(listing.price)} · Seller: {seller?.name || "Unknown"}</p><p className="mt-1 text-xs text-ink-400">Requested {listing.promotionRequestedAt ? new Date(listing.promotionRequestedAt).toLocaleString("en-IN") : "recently"}</p></div>
+            <div className="flex shrink-0 gap-2"><button onClick={async()=>{const value=window.prompt("Set the mock promotion price in whole INR rupees");if(value!==null){const result=await setFeaturedStatus(listing.id,"awaiting_payment",Number(value));if(!result?.success)window.alert(result?.error||"Unable to send quote.");}}} className="btn-primary px-3 py-2 text-sm"><Check size={14}/> Accept & Set Price</button><button onClick={async()=>{const result=await setFeaturedStatus(listing.id,"rejected");if(!result?.success)window.alert(result?.error||"Unable to reject request.");}} className="btn-secondary px-3 py-2 text-sm"><X size={14}/> Reject</button></div>
+          </div>;})}</div>}
+          <div><h3 className="mb-3 font-display font-bold text-ink-900">Awaiting Mock Payment</h3><div className="space-y-2">{listings.filter((listing)=>listing.featuredStatus==="awaiting_payment").map((listing)=><div key={listing.id} className="flex items-center gap-3 rounded-xl border border-ink-100 bg-white p-3">{listing.images?.[0] && <img src={listing.images[0]} alt="" className="h-12 w-12 rounded-lg object-cover"/>}<div className="flex-1"><p className="font-medium text-ink-900">{listing.title}</p><p className="text-xs text-ink-500">Quote: {formatPrice(listing.promotionPrice)} · awaiting seller mock payment</p></div><span className="badge bg-blue-100 text-blue-700">Awaiting payment</span></div>)}{!listings.some((listing)=>listing.featuredStatus==="awaiting_payment")&&<p className="text-sm text-ink-400">No quotes awaiting payment.</p>}</div></div>
         </div>
-        <div className="card flex items-center gap-4 p-4">
-          <div className="icon-tile bg-ink-100 text-ink-600">
-            <Users size={20} />
-          </div>
-          <div>
-            <p className="text-xs font-medium text-ink-500">Registered users</p>
-            <p className="font-display text-2xl font-bold text-ink-900">{users.length}</p>
-          </div>
-        </div>
-        <div className="card flex items-center gap-4 p-4">
-          <div className="icon-tile bg-red-100 text-red-600">
-            <Flag size={20} />
-          </div>
-          <div>
-            <p className="text-xs font-medium text-ink-500">Open reports</p>
-            <p className="font-display text-2xl font-bold text-ink-900">{openReports.length}</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="mb-6 flex gap-2 border-b border-ink-100">
-        {TABS.map((t) => {
-          const Icon = t.icon;
-          return (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
-                tab === t.id
-                  ? "border-brand-600 text-brand-700"
-                  : "border-transparent text-ink-500 hover:text-ink-700"
-              }`}
-            >
-              <Icon size={15} /> {t.label}
-            </button>
-          );
-        })}
-      </div>
+      )}
 
       {tab === "listings" && (
         <div className="space-y-8">
-          {pendingFeatured.length > 0 && (
+          {false && pendingFeatured.length > 0 && (
             <div>
               <h3 className="mb-3 flex items-center gap-2 font-display font-bold text-ink-900">
                 <Sparkles size={16} className="text-amber-500" /> Pending Featured Approvals
@@ -196,10 +206,16 @@ export default function AdminPanel() {
                         </p>
                       </div>
                       <button
-                        onClick={() => setFeaturedStatus(l.id, "approved")}
+                        onClick={async () => {
+                          const value = window.prompt("Mock promotion quote in whole INR rupees");
+                          if (value !== null) {
+                            const result = await setFeaturedStatus(l.id, "awaiting_payment", Number(value));
+                            if (!result?.success) window.alert(result?.error || "Unable to send mock promotion quote.");
+                          }
+                        }}
                         className="btn-primary px-3 py-1.5 text-sm"
                       >
-                        <Check size={14} /> Approve
+                        <Check size={14} /> Send Quote
                       </button>
                       <button
                         onClick={() => setFeaturedStatus(l.id, "rejected")}
@@ -216,6 +232,13 @@ export default function AdminPanel() {
 
           <div>
             <h3 className="mb-3 font-display font-bold text-ink-900">All Listings</h3>
+            <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+              <label className="relative"><Search size={15} className="absolute left-3 top-3 text-ink-400" /><input value={listingSearch} onChange={(e) => { setListingSearch(e.target.value); setListingPage(0); }} placeholder="Title or seller" className="input-field pl-9" /></label>
+              <select className="input-field" value={listingFilters.status} onChange={(e) => { setListingFilters((p) => ({...p,status:e.target.value})); setListingPage(0); }}><option value="">All statuses</option>{["active","sold","expired","flagged","removed"].map((v)=><option key={v}>{v}</option>)}</select>
+              <select className="input-field" value={listingFilters.featured} onChange={(e) => { setListingFilters((p) => ({...p,featured:e.target.value})); setListingPage(0); }}><option value="">All promotion states</option>{["none","pending","awaiting_payment","approved","rejected"].map((v)=><option key={v}>{v}</option>)}</select>
+              <select className="input-field" value={listingFilters.category} onChange={(e) => { setListingFilters((p) => ({...p,category:e.target.value,subcategoryId:""})); setListingPage(0); }}><option value="">All categories</option>{categories.map((c)=><option key={c.id} value={c.id}>{c.label}</option>)}</select>
+              <select className="input-field" value={listingFilters.subcategoryId} onChange={(e) => { setListingFilters((p) => ({...p,subcategoryId:e.target.value})); setListingPage(0); }}><option value="">All subcategories</option>{subcategories.filter((s)=>!listingFilters.category||s.categoryId===listingFilters.category).map((s)=><option key={s.id} value={s.id}>{s.label}</option>)}</select>
+            </div>
             <div className="overflow-hidden rounded-2xl border border-ink-100">
               <table className="w-full text-left text-sm">
                 <thead className="bg-ink-50 text-xs uppercase text-ink-500">
@@ -229,13 +252,14 @@ export default function AdminPanel() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-ink-100">
-                  {otherListings.map((l) => {
+                  {pageListings.map((l) => {
                     const seller = getUserById(l.sellerId);
                     return (
                       <tr key={l.id}>
-                        <td className="max-w-xs truncate px-4 py-3">
-                          <Link href={`/product/${l.id}`} className="hover:underline">
-                            {l.title}
+                        <td className="max-w-xs px-4 py-3">
+                          <Link href={`/product/${l.id}`} className="flex items-center gap-3 hover:underline">
+                            {l.images?.[0] ? <img src={l.images[0]} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" /> : <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-ink-100 text-ink-400"><Package size={18} /></div>}
+                            <span className="truncate">{l.title}</span>
                           </Link>
                         </td>
                         <td className="px-4 py-3 text-ink-500">{seller?.name}</td>
@@ -244,6 +268,7 @@ export default function AdminPanel() {
                         <td className="px-4 py-3 capitalize">{l.featuredStatus}</td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            <button onClick={() => setEditingListing(l)} className="rounded-lg p-1.5 text-blue-600 hover:bg-blue-50" title="Edit listing"><Pencil size={15} /></button>
                             {l.status !== "flagged" && (
                               <button
                                 onClick={() => moderateListing(l.id, "flag", "Flagged by admin")}
@@ -286,12 +311,13 @@ export default function AdminPanel() {
                 </tbody>
               </table>
             </div>
+            <div className="mt-3 flex items-center justify-between text-sm text-ink-500"><span>{filteredListings.length} result(s)</span><div className="flex gap-2"><button className="btn-secondary px-3 py-1" disabled={listingPage===0} onClick={()=>setListingPage((p)=>p-1)}>Previous</button><button className="btn-secondary px-3 py-1" disabled={(listingPage+1)*ADMIN_PAGE_SIZE>=filteredListings.length} onClick={()=>setListingPage((p)=>p+1)}>Next</button></div></div>
           </div>
         </div>
       )}
 
       {tab === "users" && (
-        <div className="overflow-hidden rounded-2xl border border-ink-100">
+        <div><div className="mb-4 flex flex-wrap gap-2"><input value={userSearch} onChange={(e)=>{setUserSearch(e.target.value);setUserPage(0);}} placeholder="Search name or phone" className="input-field max-w-sm"/><select value={userFilter} onChange={(e)=>{setUserFilter(e.target.value);setUserPage(0);}} className="input-field max-w-xs"><option value="">All users</option><option value="active">Active</option><option value="suspended">Suspended</option><option value="admin">Admins</option></select></div><div className="overflow-hidden rounded-2xl border border-ink-100">
           <table className="w-full text-left text-sm">
             <thead className="bg-ink-50 text-xs uppercase text-ink-500">
               <tr>
@@ -303,7 +329,7 @@ export default function AdminPanel() {
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-100">
-              {users.map((u) => (
+              {pageUsers.map((u) => (
                 <tr key={u.id}>
                   <td className="px-4 py-3">
                     <Link href={`/profile/${u.id}`} className="flex items-center gap-2 hover:underline">
@@ -354,7 +380,7 @@ export default function AdminPanel() {
               ))}
             </tbody>
           </table>
-        </div>
+        </div><div className="mt-3 flex justify-end gap-2"><button className="btn-secondary px-3 py-1" disabled={userPage===0} onClick={()=>setUserPage((p)=>p-1)}>Previous</button><button className="btn-secondary px-3 py-1" disabled={(userPage+1)*ADMIN_PAGE_SIZE>=filteredUsers.length} onClick={()=>setUserPage((p)=>p+1)}>Next</button></div></div>
       )}
 
       {tab === "reports" && (
@@ -381,12 +407,14 @@ export default function AdminPanel() {
                         <p className="mt-1 text-sm text-ink-600">{r.reason}</p>
                         <p className="mt-1 text-xs text-ink-400">Reported by {reporter?.name}</p>
                       </div>
-                      <button
-                        onClick={() => resolveReport(r.id)}
-                        className="btn-secondary shrink-0 px-3 py-1.5 text-sm"
-                      >
-                        Resolve
-                      </button>
+                      <div className="flex max-w-md flex-col items-end gap-2">
+                        <textarea id={`report-note-${r.id}`} className="input-field min-h-16 text-sm" placeholder="Resolution note" />
+                        <div className="flex flex-wrap justify-end gap-2">
+                          {(r.type === "listing" ? [["flag","Flag"],["remove","Remove"],["resolve","No action"]] : [["warn","Warn"],["suspend","Suspend"],["resolve","No action"]]).map(([action,label]) => (
+                            <button key={action} onClick={() => resolveReport(r.id, action, document.getElementById(`report-note-${r.id}`)?.value || "")} className="btn-secondary shrink-0 px-3 py-1.5 text-sm">{label}</button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );
@@ -401,7 +429,9 @@ export default function AdminPanel() {
                 {closedReports.map((r) => (
                   <div key={r.id} className="rounded-xl bg-ink-50 px-4 py-2.5 text-sm text-ink-500">
                     <span className="badge-ink mr-2 capitalize">{r.type}</span>
-                    {r.reason}
+                    <span className="font-medium text-ink-700">{r.resolutionAction || "resolve"}</span> · {r.reason}
+                    {r.resolutionNote && <span className="block pl-16 text-xs">Note: {r.resolutionNote}</span>}
+                    {r.resolvedAt && <span className="block pl-16 text-xs">Resolved {new Date(r.resolvedAt).toLocaleString("en-IN")} by {getUserById(r.resolvedBy)?.name || "Admin"}</span>}
                   </div>
                 ))}
               </div>
@@ -701,6 +731,15 @@ export default function AdminPanel() {
               </table>
             </div>
           </div>
+          <div>
+            <h3 className="mb-3 font-display font-bold text-ink-900">Subcategories</h3>
+            <div className="space-y-4">
+              {categories.map((cat) => <div key={cat.id} className="card p-4"><h4 className="mb-3 font-semibold text-ink-900">{cat.label}</h4>
+                <div className="mb-3 flex gap-2"><input className="input-field" placeholder="New subcategory" value={newSubcategory[cat.id] || ""} onChange={(e)=>setNewSubcategory((p)=>({...p,[cat.id]:e.target.value}))}/><button className="btn-primary" onClick={async()=>{const result=await mutateSubcategory("create-subcategory",{category_id:cat.id,label:newSubcategory[cat.id],sort_order:subcategories.filter((s)=>s.categoryId===cat.id).length});if(result.success)setNewSubcategory((p)=>({...p,[cat.id]:""}));else setCatError(result.error);}}><Plus size={15}/> Add</button></div>
+                <div className="space-y-2">{subcategories.filter((s)=>s.categoryId===cat.id).map((sub)=><div key={sub.id} className="flex items-center gap-2 rounded-lg bg-ink-50 p-2"><input id={`sub-label-${sub.id}`} defaultValue={sub.label} className="input-field py-1"/><input id={`sub-order-${sub.id}`} type="number" defaultValue={sub.sortOrder} className="input-field w-24 py-1"/><button onClick={()=>mutateSubcategory("update-subcategory",{id:sub.id,label:document.getElementById(`sub-label-${sub.id}`).value,sort_order:Number(document.getElementById(`sub-order-${sub.id}`).value)})} className="rounded-lg p-2 text-brand-700"><Check size={15}/></button><button onClick={async()=>{const result=await mutateSubcategory("delete-subcategory",{id:sub.id});if(!result.success)setCatError(result.error);}} className="rounded-lg p-2 text-red-500"><Trash2 size={15}/></button></div>)}</div>
+              </div>)}
+            </div>
+          </div>
         </div>
       )}
 
@@ -792,6 +831,10 @@ export default function AdminPanel() {
                     { label: "Active Listings", value: analytics.overview.activeListings, icon: Package, color: "bg-green-100 text-green-600" },
                     { label: "Sold Items", value: analytics.overview.soldListings, icon: TrendingUp, color: "bg-purple-100 text-purple-600" },
                     { label: "Open Reports", value: analytics.overview.openReports, icon: AlertTriangle, color: "bg-red-100 text-red-600" },
+                    { label: "Pending Boost Requests", value: analytics.overview.pendingPromotions, icon: Sparkles, color: "bg-amber-100 text-amber-600" },
+                    { label: "Awaiting Mock Payment", value: analytics.overview.awaitingPaymentPromotions, icon: Package, color: "bg-blue-100 text-blue-600" },
+                    { label: "Successful Mock Payments", value: analytics.overview.successfulMockPayments, icon: Check, color: "bg-green-100 text-green-600" },
+                    { label: "Mock Promotion Revenue", value: formatPrice(analytics.overview.mockPromotionRevenue), icon: TrendingUp, color: "bg-purple-100 text-purple-600" },
                   ].map((stat) => {
                     const Icon = stat.icon;
                     return (
@@ -922,6 +965,8 @@ export default function AdminPanel() {
                   </div>
                 </div>
               </div>
+
+              <div><h3 className="mb-4 font-display font-bold text-ink-900">Recent Mock Promotion Transactions</h3><div className="overflow-hidden rounded-2xl border border-ink-100"><table className="w-full text-left text-sm"><thead className="bg-ink-50 text-xs uppercase text-ink-500"><tr><th className="px-4 py-3">Reference</th><th className="px-4 py-3">Listing</th><th className="px-4 py-3">Amount</th><th className="px-4 py-3">Date</th></tr></thead><tbody className="divide-y divide-ink-100">{(analytics.recentMockTransactions || []).map((payment)=><tr key={payment.id}><td className="px-4 py-3 font-mono text-xs">{payment.reference}</td><td className="px-4 py-3">{getListingById(payment.listing_id)?.title || payment.listing_id}</td><td className="px-4 py-3">{formatPrice(payment.amount_inr)} <span className="badge-ink">Mock</span></td><td className="px-4 py-3 text-ink-500">{new Date(payment.created_at).toLocaleString("en-IN")}</td></tr>)}</tbody></table>{!analytics.recentMockTransactions?.length && <p className="p-4 text-sm text-ink-400">No mock transactions yet.</p>}</div></div>
 
               {analytics.recentUsers.length > 0 && (
                 <div>
@@ -1061,6 +1106,9 @@ export default function AdminPanel() {
           </div>
         </div>
       )}
+          <EditListingModal isOpen={!!editingListing} listing={editingListing} adminMode onClose={() => setEditingListing(null)} />
+        </main>
+      </div>
     </div>
   );
 }

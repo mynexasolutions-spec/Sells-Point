@@ -11,6 +11,7 @@ const DATE_OPTIONS = [
 ];
 
 export default function FilterBar({
+  subcategories = [], subcategoryId, onSubcategoryChange,
   minPrice,
   maxPrice,
   conditions,
@@ -34,6 +35,7 @@ export default function FilterBar({
 
   return (
     <div className="space-y-4">
+      {subcategories.length > 0 && <div className="flex items-center gap-3"><div className="flex items-center gap-2 text-sm font-semibold text-ink-700"><Tag size={16}/>Subcategory:</div><select value={subcategoryId || ""} onChange={(e)=>onSubcategoryChange(e.target.value)} className="input-field max-w-xs"><option value="">All subcategories</option>{subcategories.map((s)=><option key={s.id} value={s.id}>{s.label}</option>)}</select></div>}
       {/* Price Range */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-ink-700">

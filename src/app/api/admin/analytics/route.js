@@ -17,6 +17,9 @@ export async function GET(request) {
     { count: totalMessages },
     { count: openReports },
     { count: resolvedReports },
+    { count: pendingPromotions },
+    { count: awaitingPaymentPromotions },
+    { count: successfulMockPayments },
   ] = await Promise.all([
     supabaseAdmin.from("profiles").select("*", { count: "exact", head: true }),
     supabaseAdmin.from("listings").select("*", { count: "exact", head: true }),
@@ -26,7 +29,14 @@ export async function GET(request) {
     supabaseAdmin.from("messages").select("*", { count: "exact", head: true }),
     supabaseAdmin.from("reports").select("*", { count: "exact", head: true }).eq("status", "open"),
     supabaseAdmin.from("reports").select("*", { count: "exact", head: true }).eq("status", "resolved"),
+    supabaseAdmin.from("listings").select("*", { count: "exact", head: true }).eq("featured_status", "pending"),
+    supabaseAdmin.from("listings").select("*", { count: "exact", head: true }).eq("featured_status", "awaiting_payment"),
+    supabaseAdmin.from("promotion_payments").select("*", { count: "exact", head: true }).eq("status", "successful"),
   ]);
+
+  const { data: paymentRows } = await supabaseAdmin.from("promotion_payments").select("id, listing_id, seller_id, amount_inr, provider, status, reference, created_at").eq("status", "successful").order("created_at", { ascending: false }).limit(10);
+  const { data: revenueRows } = await supabaseAdmin.from("promotion_payments").select("amount_inr").eq("status", "successful");
+  const mockPromotionRevenue = (revenueRows || []).reduce((sum, row) => sum + Number(row.amount_inr || 0), 0);
 
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const { data: recentUsers } = await supabaseAdmin
@@ -71,10 +81,15 @@ export async function GET(request) {
       totalMessages: totalMessages || 0,
       openReports: openReports || 0,
       resolvedReports: resolvedReports || 0,
+      pendingPromotions: pendingPromotions || 0,
+      awaitingPaymentPromotions: awaitingPaymentPromotions || 0,
+      successfulMockPayments: successfulMockPayments || 0,
+      mockPromotionRevenue,
     },
     recentUsers: recentUsers || [],
     categoryStats: categoryStatsData,
     conditionCounts,
     listingsByDay: Object.entries(listingsByDay).map(([date, count]) => ({ date, count })),
+    recentMockTransactions: paymentRows || [],
   });
 }

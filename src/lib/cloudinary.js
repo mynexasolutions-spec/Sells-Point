@@ -8,10 +8,10 @@ cloudinary.config({
   secure: true,
 });
 
-export async function uploadMedia(buffer, resourceType = "auto") {
+export async function uploadMedia(buffer, resourceType = "auto", folder = "sellspoint") {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
-      { resource_type: resourceType, folder: "sellspoint" },
+      { resource_type: resourceType, folder },
       (error, result) => {
         if (error) reject(error);
         else resolve(result);

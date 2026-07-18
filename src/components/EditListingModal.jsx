@@ -9,14 +9,15 @@ const STEPS = ["Details", "Media", "Pricing", "Review"];
 async function uploadFile(file) {
   const formData = new FormData();
   formData.append("file", file);
+  formData.append("folder", "sells-point/products");
   const res = await fetch("/api/upload", { method: "POST", body: formData });
   if (!res.ok) throw new Error("Upload failed");
   const { url } = await res.json();
   return url;
 }
 
-export default function EditListingModal({ isOpen, onClose, listing }) {
-  const { updateListing, categories } = useApp();
+export default function EditListingModal({ isOpen, onClose, listing, adminMode = false }) {
+  const { updateListing, categories, subcategories } = useApp();
   const [step, setStep] = useState(0);
   const [submitted, setSubmitted] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -25,6 +26,7 @@ export default function EditListingModal({ isOpen, onClose, listing }) {
   const [form, setForm] = useState({
     title: listing?.title || "",
     category: listing?.category || "",
+    subcategoryId: listing?.subcategoryId || "",
     condition: listing?.condition || "Good",
     description: listing?.description || "",
     images: listing?.images || [],
@@ -41,6 +43,7 @@ export default function EditListingModal({ isOpen, onClose, listing }) {
       setForm({
         title: listing.title || "",
         category: listing.category || "",
+        subcategoryId: listing.subcategoryId || "",
         condition: listing.condition || "Good",
         description: listing.description || "",
         images: listing.images || [],
@@ -129,7 +132,7 @@ export default function EditListingModal({ isOpen, onClose, listing }) {
     setSubmitting(true);
     setError("");
     try {
-      const result = await updateListing(listing.id, form);
+      const result = await updateListing(listing.id, form, { skipOwnershipCheck: adminMode });
       if (result?.success) {
         setSubmitted(true);
       } else {
@@ -147,7 +150,7 @@ export default function EditListingModal({ isOpen, onClose, listing }) {
       <div className="relative flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-soft animate-slide-up">
         <div className="flex items-center justify-between border-b border-ink-100 px-6 py-4">
           <h2 className="font-display text-lg font-bold text-ink-900">
-            {submitted ? "Listing Updated" : "Edit Listing"}
+            {submitted ? "Listing Updated" : adminMode ? "Admin Edit Listing" : "Edit Listing"}
           </h2>
           <button
             onClick={close}
@@ -217,14 +220,14 @@ export default function EditListingModal({ isOpen, onClose, listing }) {
                       className="input-field"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <div>
                       <label className="mb-1.5 block text-sm font-medium text-ink-700">
                         Category
                       </label>
                       <select
                         value={form.category}
-                        onChange={(e) => set({ category: e.target.value })}
+                        onChange={(e) => set({ category: e.target.value, subcategoryId: "" })}
                         className="input-field"
                       >
                         {categories.map((c) => (
@@ -232,6 +235,13 @@ export default function EditListingModal({ isOpen, onClose, listing }) {
                             {c.label}
                           </option>
                         ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-ink-700">Subcategory</label>
+                      <select value={form.subcategoryId} onChange={(e) => set({ subcategoryId: e.target.value })} className="input-field" disabled={!form.category}>
+                        <option value="">None</option>
+                        {subcategories.filter((s) => s.categoryId === form.category).map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
                       </select>
                     </div>
                     <div>

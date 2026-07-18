@@ -30,6 +30,9 @@ function mapCategory(row) {
     sortOrder: row.sort_order,
   };
 }
+function mapSubcategory(row) {
+  return { id: row.id, categoryId: row.category_id, label: row.label, sortOrder: row.sort_order || 0 };
+}
 
 // ----- DB row <-> app object mapping -----
 
@@ -63,6 +66,7 @@ function mapListing(row) {
     price: Number(row.price) || 0,
     originalPrice: Number(row.original_price) || 0,
     category: row.category,
+    subcategoryId: row.subcategory_id || null,
     condition: row.condition,
     images: row.images || [],
     video: row.video_url,
@@ -77,6 +81,11 @@ function mapListing(row) {
     distanceKm: typeof row.distance_km === "number" ? row.distance_km : null,
     createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
     views: row.views || 0,
+    promotionPrice: row.promotion_price_inr == null ? null : Number(row.promotion_price_inr),
+    promotionRequestedAt: row.promotion_requested_at ? new Date(row.promotion_requested_at).getTime() : null,
+    promotionQuotedAt: row.promotion_quoted_at ? new Date(row.promotion_quoted_at).getTime() : null,
+    promotionPaidAt: row.promotion_paid_at ? new Date(row.promotion_paid_at).getTime() : null,
+    promotionPaymentReference: row.promotion_payment_reference || null,
   };
 }
 
@@ -107,6 +116,10 @@ function mapReport(row) {
     reporterId: row.reporter_id,
     reason: row.reason,
     status: row.status,
+    resolutionNote: row.resolution_note || "",
+    resolutionAction: row.resolution_action || "",
+    resolvedBy: row.resolved_by || null,
+    resolvedAt: row.resolved_at ? new Date(row.resolved_at).getTime() : null,
     createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
   };
 }
@@ -142,6 +155,7 @@ const LISTING_FIELD_MAP = {
   price: "price",
   originalPrice: "original_price",
   category: "category",
+  subcategoryId: "subcategory_id",
   condition: "condition",
   images: "images",
   video: "video_url",
@@ -189,6 +203,7 @@ export function AppProvider({ children }) {
   const [users, setUsers] = useState([]);
   const [listings, setListings] = useState([]);
   const [categories, setCategories] = useState(CATEGORIES);
+  const [subcategories, setSubcategories] = useState([]);
   const [chats, setChats] = useState([]);
   const chatsRef = useRef(chats);
   useEffect(() => {
@@ -229,6 +244,7 @@ export function AppProvider({ children }) {
       if (json.categories && json.categories.length > 0) {
         setCategories(json.categories.map(mapCategory));
       }
+      setSubcategories((json.subcategories || []).map(mapSubcategory));
     }
   }, []);
 
@@ -275,6 +291,7 @@ export function AppProvider({ children }) {
             radius_km: filters.radiusKm || 25,
             search_query: filters.q || null,
             category_filter: filters.category || null,
+            subcategory_filter: filters.subcategoryId || null,
             min_price: filters.minPrice || null,
             max_price: filters.maxPrice || null,
             condition_filters: filters.conditions?.length ? filters.conditions : null,
@@ -308,6 +325,7 @@ export function AppProvider({ children }) {
         if (filters.category) {
           query = query.eq("category", filters.category);
         }
+        if (filters.subcategoryId) query = query.eq("subcategory_id", filters.subcategoryId);
         if (filters.q) {
           query = query.ilike("title", `%${filters.q}%`);
         }
@@ -473,6 +491,18 @@ export function AppProvider({ children }) {
     },
     [currentUser, fetchCategories]
   );
+
+  const mutateSubcategory = useCallback(async (action, subcategory) => {
+    if (!currentUser) return { success: false, error: "Not authenticated" };
+    const res = await fetch("/api/admin/categories", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: currentUser.id, action, subcategory }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) return { success: false, error: json.error || "Unable to update subcategory" };
+    await fetchCategories();
+    return { success: true };
+  }, [currentUser, fetchCategories]);
 
   const fetchAnnouncements = useCallback(async () => {
     const res = await fetch("/api/announcements");
@@ -974,9 +1004,22 @@ export function AppProvider({ children }) {
   );
 
   const requestFeatured = useCallback(
-    (id) => updateListing(id, { featured: true, featuredStatus: "pending" }),
+    (id) => updateListing(id, { featured: false, featuredStatus: "pending" }),
     [updateListing]
   );
+
+  const completeMockPromotionPayment = useCallback(async (id) => {
+    if (!currentUser) return { success: false, error: "Not authenticated" };
+    const res = await fetch("/api/listings/promotion-payment", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: currentUser.id, listingId: id }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) return { success: false, error: json.error || "Mock payment failed" };
+    const mapped = mapListing(json.listing);
+    setListings((prev) => prev.map((listing) => listing.id === id ? mapped : listing));
+    return { success: true, payment: json.payment };
+  }, [currentUser]);
 
   const incrementViews = useCallback(
     (id) => {
@@ -1150,14 +1193,16 @@ export function AppProvider({ children }) {
   );
 
   const resolveReport = useCallback(
-    async (id, note = "") => {
+    async (id, action = "resolve", note = "") => {
       if (!currentUser) return;
-      await fetch("/api/admin/reports", {
+      const res = await fetch("/api/admin/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actorId: currentUser.id, reportId: id, action: "resolve", note }),
+        body: JSON.stringify({ actorId: currentUser.id, reportId: id, action, note }),
       });
-      setReports((prev) => prev.map((r) => (r.id === id ? { ...r, status: "resolved" } : r)));
+      if (!res.ok) return { success: false, error: (await res.json().catch(() => ({}))).error || "Resolution failed" };
+      setReports((prev) => prev.map((r) => (r.id === id ? { ...r, status: "resolved", resolutionNote: note, resolutionAction: action, resolvedBy: currentUser.id, resolvedAt: Date.now() } : r)));
+      return { success: true };
     },
     [currentUser]
   );
@@ -1190,24 +1235,25 @@ export function AppProvider({ children }) {
   );
 
   const setFeaturedStatus = useCallback(
-    async (id, status) => {
+    async (id, status, price = null) => {
       if (!currentUser) return;
-      const action = status === "approved" ? "approve-featured" : "reject-featured";
-      await fetch("/api/admin/listings", {
+      const action = status === "awaiting_payment" ? "quote-featured" : "reject-featured";
+      const res = await fetch("/api/admin/listings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actorId: currentUser.id, listingId: id, action }),
+        body: JSON.stringify({ actorId: currentUser.id, listingId: id, action, price }),
       });
+      if (!res.ok) return { success: false, error: (await res.json().catch(() => ({}))).error || "Unable to update request" };
       setListings((prev) =>
         prev.map((l) =>
-          l.id === id ? { ...l, featuredStatus: status, featured: status === "approved" } : l
+          l.id === id ? { ...l, featuredStatus: status, featured: false, promotionPrice: status === "awaiting_payment" ? Number(price) : null } : l
         )
       );
       const listing = listings.find((l) => l.id === id);
       if (listing && listing.sellerId !== currentUser.id) {
-        const notifType = status === "approved" ? "featured_approved" : "featured_rejected";
-        await createNotification(listing.sellerId, currentUser.id, notifType, id, "listing");
+        if (status === "rejected") await createNotification(listing.sellerId, currentUser.id, "featured_rejected", id, "listing");
       }
+      return { success: true };
     },
     [currentUser, listings, createNotification]
   );
@@ -1295,6 +1341,7 @@ export function AppProvider({ children }) {
     users,
     listings,
     categories,
+    subcategories,
     chats,
     reports,
     notifications,
@@ -1313,6 +1360,7 @@ export function AppProvider({ children }) {
     renewListing,
     markAsSold,
     requestFeatured,
+    completeMockPromotionPayment,
     incrementViews,
     toggleFavorite,
     isFavorite,
@@ -1342,6 +1390,7 @@ export function AppProvider({ children }) {
     addCategory,
     updateCategory,
     deleteCategory,
+    mutateSubcategory,
     fetchCategories,
     announcements,
     publicAnnouncements,

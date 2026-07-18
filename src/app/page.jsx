@@ -157,6 +157,7 @@ function HomeContent() {
     currentUser,
     hydrated,
     categories,
+    subcategories,
     paginatedListings,
     paginatedLoading,
     paginatedHasMore,
@@ -171,6 +172,7 @@ function HomeContent() {
   const q = (searchParams.get("q") || "").toLowerCase();
   const loc = searchParams.get("loc") || "All India";
   const [activeCategory, setActiveCategory] = useState(searchParams.get("category") || null);
+  const [subcategoryId, setSubcategoryId] = useState(searchParams.get("subcategory") || "");
   const [authOpen, setAuthOpen] = useState(false);
   const [postOpen, setPostOpen] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
@@ -203,6 +205,8 @@ function HomeContent() {
   // Sync filter state to URL params
   const updateURL = (newFilters) => {
     const urlParams = new URLSearchParams(window.location.search);
+    const nextSubcategory = newFilters.subcategoryId === undefined ? subcategoryId : newFilters.subcategoryId;
+    if (nextSubcategory) urlParams.set("subcategory", nextSubcategory); else urlParams.delete("subcategory");
     
     if (newFilters.minPrice) urlParams.set("min", String(newFilters.minPrice));
     else urlParams.delete("min");
@@ -292,6 +296,7 @@ function HomeContent() {
     if (!hydrated) return;
     const filters = {
       category: activeCategory || undefined,
+      subcategoryId: subcategoryId || undefined,
       q: q || undefined,
       loc: loc || undefined,
       minPrice: minPrice || undefined,
@@ -321,7 +326,7 @@ function HomeContent() {
     }
 
     setPaginationReady(true);
-  }, [hydrated, activeCategory, q, loc, minPrice, maxPrice, conditions, dateFilter, nearby, radiusKm, resetPagination, fetchPaginatedListings, setLastFilters, router]);
+  }, [hydrated, activeCategory, subcategoryId, q, loc, minPrice, maxPrice, conditions, dateFilter, nearby, radiusKm, resetPagination, fetchPaginatedListings, setLastFilters, router]);
 
   useEffect(() => {
     if (!paginationReady) return;
@@ -350,17 +355,17 @@ function HomeContent() {
 
   return (
     <div>
-      <section className="relative min-h-[620px] overflow-hidden bg-white sm:min-h-[560px] lg:min-h-[520px]">
+      <section className="relative min-h-[620px] overflow-hidden bg-white sm:min-h-[560px] lg:aspect-[3/1] lg:min-h-0">
         <div className="absolute inset-0">
           <div className="relative h-full w-full">
             <img
               src="/assets/home/marketplace-hero.png"
               alt="Phones, laptops, tablets, watches, and headphones available on Sells Point"
-              className="absolute inset-0 h-full w-full object-cover object-[72%_center] lg:object-center"
+              className="absolute inset-0 h-full w-full object-cover object-center"
             />
           </div>
         </div>
-        <div className="relative z-10 mx-auto flex min-h-[620px] max-w-7xl items-center px-4 py-12 sm:min-h-[560px] sm:px-8 lg:min-h-[520px] lg:px-12">
+        <div className="relative z-10 mx-auto flex min-h-[620px] max-w-7xl items-center px-4 py-12 sm:min-h-[560px] sm:px-8 lg:h-full lg:min-h-0 lg:px-12">
           <div className="max-w-xl">
                 <span className="badge-brand">
                   <Sparkles size={12} /> Trusted marketplace
@@ -624,29 +629,105 @@ function HomeContent() {
 
 
       <Reveal>
-        <section className="w-full overflow-hidden bg-white">
-          <img
-            src="/assets/home/how-sellspoint-works.png"
-            alt="How Sells Point works"
-            className="block h-auto w-full"
-          />
+        <section className="w-full overflow-hidden bg-gradient-to-b from-white to-ink-50 px-6 py-16 sm:py-20">
+          <div className="relative mx-auto grid w-full max-w-7xl items-center gap-12 lg:grid-cols-[1.15fr_0.85fr]">
+            <div className="relative min-w-0">
+              <h2 className="mb-12 font-display text-4xl font-extrabold leading-tight tracking-tight text-ink-900 sm:mb-16 sm:text-[44px]">
+                How Sells Point Works?
+              </h2>
+
+              <div className="relative grid gap-8 sm:grid-cols-3 sm:gap-6">
+                <div
+                  className="pointer-events-none absolute left-4 right-4 top-9 z-0 hidden h-0.5 sm:block"
+                  style={{
+                    backgroundImage: "linear-gradient(90deg, #22a45d 45%, transparent 0)",
+                    backgroundSize: "14px 2px",
+                    backgroundRepeat: "repeat-x",
+                  }}
+                />
+
+                <div className="relative z-10">
+                  <div className="flex h-[74px] w-[74px] items-center justify-center rounded-full bg-brand-500 text-white shadow-[0_12px_24px_rgba(34,164,93,0.28)]">
+                    <Icons.PenLine size={30} />
+                  </div>
+                  <h3 className="mt-7 font-display text-xl font-bold text-ink-900">1. Post Your Ad</h3>
+                  <p className="mt-3 max-w-[230px] text-base leading-relaxed text-ink-500">List your item in seconds for free.</p>
+                </div>
+
+                <div className="relative z-10">
+                  <div className="flex h-[74px] w-[74px] items-center justify-center rounded-full bg-brand-500 text-white shadow-[0_12px_24px_rgba(34,164,93,0.28)]">
+                    <Icons.MessageSquare size={30} />
+                  </div>
+                  <h3 className="mt-7 font-display text-xl font-bold text-ink-900">2. Connect</h3>
+                  <p className="mt-3 max-w-[230px] text-base leading-relaxed text-ink-500">Interested buyers will reach out to you.</p>
+                </div>
+
+                <div className="relative z-10">
+                  <div className="flex h-[74px] w-[74px] items-center justify-center rounded-full bg-brand-500 text-white shadow-[0_12px_24px_rgba(34,164,93,0.28)]">
+                    <Icons.Link size={32} />
+                  </div>
+                  <h3 className="mt-7 font-display text-xl font-bold text-ink-900">3. Complete the Deal</h3>
+                  <p className="mt-3 max-w-[230px] text-base leading-relaxed text-ink-500">Close the deal safely and easily.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="relative flex h-[420px] items-center justify-center sm:h-[520px]">
+              <div className="absolute right-0 h-[78%] w-full rounded-[50%] bg-brand-500/10 blur-[1px]" />
+              <svg
+                className="pointer-events-none absolute right-0 top-0 z-0 h-[340px] w-[360px] max-w-full"
+                viewBox="0 0 360 340"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M0 263 C60 263, 90 230, 150 195 C200 165, 250 150, 300 120 C335 100, 350 90, 360 84"
+                  stroke="#22a45d"
+                  strokeWidth="2"
+                  strokeDasharray="6 8"
+                  strokeLinecap="round"
+                  opacity="0.55"
+                />
+              </svg>
+
+              <div className="relative z-10 h-[400px] w-[280px] overflow-hidden rounded-[150px_150px_32px_32px] sm:h-[500px] sm:w-[340px]">
+                <img
+                  src="/assets/home/how-it-works.png"
+                  alt="Person using Sells Point on a phone"
+                  className="block h-full w-full object-cover object-[52%_8%]"
+                />
+              </div>
+
+              <div className="absolute left-[6%] top-[24%] z-20 flex h-[64px] w-[64px] items-center justify-center rounded-full bg-white text-brand-600 shadow-[0_14px_30px_rgba(24,34,51,0.12)] sm:h-[72px] sm:w-[72px]">
+                <Icons.MapPin size={30} />
+              </div>
+              <div className="absolute right-[2%] top-[12%] z-20 flex h-[70px] w-[70px] items-center justify-center rounded-full bg-white text-brand-600 shadow-[0_14px_30px_rgba(24,34,51,0.12)] sm:h-20 sm:w-20">
+                <Icons.ShieldCheck size={34} />
+              </div>
+              <div className="absolute bottom-[14%] right-0 z-20 flex h-[66px] w-[66px] items-center justify-center rounded-full bg-brand-500 text-white shadow-[0_14px_30px_rgba(34,164,93,0.28)] sm:h-[74px] sm:w-[74px]">
+                <Icons.MessageSquare size={32} />
+              </div>
+            </div>
+          </div>
         </section>
       </Reveal>
 
       <Reveal>
         <section className="relative w-full overflow-hidden bg-ink-900">
-          <img
-            src="/assets/home/ready-to-declutter.png"
-            alt="Ready to declutter or find something amazing? Join thousands of buyers and sellers on Sells Point."
-            className="block h-[155px] w-full object-cover object-[45%_center] sm:h-[220px] lg:h-auto lg:object-contain"
-          />
-          <button
-            type="button"
-            onClick={handleStartSelling}
-            className="btn-primary absolute bottom-5 right-5 px-4 py-2.5 text-sm sm:bottom-8 sm:right-8 sm:px-6 sm:py-3"
-          >
-            Post Your Ad Now <ArrowRight size={16} />
-          </button>
+          <div className="relative w-full">
+            <img
+              src="/assets/home/ready-to-declutter.png"
+              alt="Ready to declutter or find something amazing? Join thousands of buyers and sellers on Sells Point."
+              className="-my-1 block h-[155px] w-full object-cover object-[45%_center] sm:h-[220px] lg:h-auto lg:object-contain"
+            />
+            <button
+              type="button"
+              onClick={handleStartSelling}
+              className="absolute bottom-5 right-5 inline-flex items-center justify-center gap-2 rounded-xl bg-white px-7 py-3.5 font-display text-sm font-bold text-brand-700 shadow-lg transition hover:bg-ink-50 sm:bottom-7 sm:right-8 lg:bottom-auto lg:left-[53%] lg:right-auto lg:top-[64%] lg:min-w-[250px] lg:-translate-x-1/2 lg:px-8 lg:py-4"
+            >
+              Post Your Ad Now <ArrowRight size={16} />
+            </button>
+          </div>
         </section>
       </Reveal>
 
@@ -693,7 +774,7 @@ function HomeContent() {
             return (
               <button
                 key={cat.id}
-                onClick={() => setActiveCategory(cat.id === activeCategory ? null : cat.id)}
+                onClick={() => { setActiveCategory(cat.id === activeCategory ? null : cat.id); setSubcategoryId(""); }}
                 className={`flex shrink-0 items-center gap-2 rounded-full py-2 pl-2 pr-4 text-sm font-semibold transition-all ${
                   active
                     ? "bg-brand-600 text-white shadow-glow"
@@ -736,6 +817,9 @@ function HomeContent() {
         {showFilters && (
           <div className="mt-3 rounded-xl border border-ink-200 bg-white p-4 shadow-sm">
             <FilterBar
+              subcategories={subcategories.filter((s)=>!activeCategory||s.categoryId===activeCategory)}
+              subcategoryId={subcategoryId}
+              onSubcategoryChange={(value)=>{setSubcategoryId(value);updateURL({minPrice,maxPrice,conditions,dateFilter,nearby,radiusKm,subcategoryId:value});}}
               minPrice={minPrice}
               maxPrice={maxPrice}
               conditions={conditions}

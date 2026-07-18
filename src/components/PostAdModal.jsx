@@ -10,6 +10,7 @@ const STEPS = ["Details", "Media", "Pricing & Boost", "Review"];
 async function uploadFile(file) {
   const formData = new FormData();
   formData.append("file", file);
+  formData.append("folder", "sells-point/products");
   const res = await fetch("/api/upload", { method: "POST", body: formData });
   if (!res.ok) throw new Error("Upload failed");
   const { url } = await res.json();
@@ -17,7 +18,7 @@ async function uploadFile(file) {
 }
 
 export default function PostAdModal({ isOpen, onClose }) {
-  const { addListing, currentUser, categories } = useApp();
+  const { addListing, currentUser, categories, subcategories } = useApp();
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [submitted, setSubmitted] = useState(null);
@@ -27,6 +28,7 @@ export default function PostAdModal({ isOpen, onClose }) {
   const [form, setForm] = useState({
     title: "",
     category: "",
+    subcategoryId: "",
     condition: "Good",
     description: "",
     images: [],
@@ -48,6 +50,7 @@ export default function PostAdModal({ isOpen, onClose }) {
     setForm({
       title: "",
       category: "",
+      subcategoryId: "",
       condition: "Good",
       description: "",
       images: [],
@@ -217,14 +220,14 @@ export default function PostAdModal({ isOpen, onClose }) {
                       className="input-field"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <div>
                       <label className="mb-1.5 block text-sm font-medium text-ink-700">
                         Category
                       </label>
                       <select
                         value={form.category}
-                        onChange={(e) => set({ category: e.target.value })}
+                        onChange={(e) => set({ category: e.target.value, subcategoryId: "" })}
                         className="input-field"
                       >
                         {categories.map((c) => (
@@ -277,6 +280,13 @@ export default function PostAdModal({ isOpen, onClose }) {
                       <button type="button" onClick={useCurrentLocation} className="btn-secondary shrink-0 px-3">
                         <LocateFixed size={16} />
                       </button>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-ink-700">Subcategory</label>
+                      <select value={form.subcategoryId} onChange={(e) => set({ subcategoryId: e.target.value })} className="input-field" disabled={!form.category}>
+                        <option value="">None</option>
+                        {subcategories.filter((s) => s.categoryId === form.category).map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                      </select>
                     </div>
                     {form.latitude && form.longitude && (
                       <p className="mt-1 text-xs text-brand-600">Nearby discovery enabled for this listing.</p>
