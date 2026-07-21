@@ -118,7 +118,7 @@ export default function DashboardPage() {
                   <img src={user?.avatar} alt="" className="h-11 w-11 rounded-full object-cover" />
                   <div className="flex-1">
                     <p className="font-semibold text-ink-900">{user?.name || "Sells Point user"}</p>
-                    <p className="text-sm text-ink-500">{user?.phone || userId}</p>
+                    <p className="text-sm text-ink-500">{user?.email || user?.phone || userId}</p>
                   </div>
                   <button onClick={() => unblockUser(userId)} className="btn-secondary px-3 py-1.5 text-sm">
                     Unblock

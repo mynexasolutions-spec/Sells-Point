@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin, isAdminActor } from "@/lib/supabaseAdmin";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireAdminSession } from "@/lib/adminSession";
 
 export async function GET(request) {
-  const actorId = request.nextUrl.searchParams.get("actorId");
-
-  if (!(await isAdminActor(actorId))) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const session = await requireAdminSession(request);
+  if (!session.ok) return session.response;
 
   const { data: chats, error: chatsError } = await supabaseAdmin
     .from("chats")
@@ -27,7 +25,7 @@ export async function GET(request) {
 
   const { data: profiles } = await supabaseAdmin
     .from("profiles")
-    .select("id, name, phone, avatar_url, is_banned");
+    .select("id, name, phone, email, avatar_url, is_banned");
 
   const { data: listings } = await supabaseAdmin
     .from("listings")
@@ -53,6 +51,7 @@ export async function GET(request) {
       id: pid,
       name: profileMap[pid]?.name || "Unknown",
       phone: profileMap[pid]?.phone || "",
+      email: profileMap[pid]?.email || "",
       avatar: profileMap[pid]?.avatar_url || "",
       isBanned: profileMap[pid]?.is_banned || false,
     })),

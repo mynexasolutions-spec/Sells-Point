@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin, isAdminActor } from "@/lib/supabaseAdmin";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireAdminSession } from "@/lib/adminSession";
 
 export async function GET() {
   const [{ data, error }, { data: subcategories, error: subError }] = await Promise.all([
@@ -12,11 +13,9 @@ export async function GET() {
 }
 
 export async function POST(request) {
-  const { actorId, action, category, subcategory } = await request.json();
-
-  if (!(await isAdminActor(actorId))) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const { action, category, subcategory } = await request.json();
+  const session = await requireAdminSession(request);
+  if (!session.ok) return session.response;
 
   if (["create-subcategory", "update-subcategory", "delete-subcategory"].includes(action)) {
     if (action === "create-subcategory") {

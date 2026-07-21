@@ -7,7 +7,7 @@ create extension if not exists pgcrypto;
 
 create table if not exists profiles (
   id uuid primary key default gen_random_uuid(),
-  phone text unique not null,
+  phone text unique,
   name text not null default '',
   email text default '',
   avatar_url text,

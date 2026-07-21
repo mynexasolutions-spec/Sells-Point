@@ -5,6 +5,22 @@ import { supabase } from "@/lib/supabaseClient";
 
 const AppContext = createContext(null);
 const CURRENT_USER_KEY = "sellspoint_current_user_id";
+const LOCAL_ACCOUNTS_KEY = "sellspoint_email_accounts";
+
+async function hashPassword(password, salt) {
+  const encoder = new TextEncoder();
+  const material = await window.crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const digest = await window.crypto.subtle.deriveBits({ name: "PBKDF2", salt: encoder.encode(salt), iterations: 100000, hash: "SHA-256" }, material, 256);
+  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function getLocalAccounts() {
+  try {
+    return JSON.parse(window.localStorage.getItem(LOCAL_ACCOUNTS_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
 
 export const CATEGORIES = [
   { id: "mobiles", label: "Mobiles", icon: "Smartphone" },
@@ -213,7 +229,6 @@ export function AppProvider({ children }) {
   const [notifications, setNotifications] = useState([]);
   const [favoriteIds, setFavoriteIds] = useState(new Set());
   const [currentUser, setCurrentUser] = useState(null);
-  const [pendingOtp, setPendingOtp] = useState(null);
   const [hydrated, setHydrated] = useState(false);
   const [userResolved, setUserResolved] = useState(false);
   const [blockedUsers, setBlockedUsersState] = useState([]);
@@ -383,14 +398,21 @@ export function AppProvider({ children }) {
     [fetchPaginatedListings]
   );
 
-  // ----- resolve logged-in user from localStorage -----
+  // ----- resolve browser-local user or server-protected admin session -----
   useEffect(() => {
-    const storedId = typeof window !== "undefined" ? window.localStorage.getItem(CURRENT_USER_KEY) : null;
-    if (!storedId) {
-      setUserResolved(true);
-      return;
-    }
     (async () => {
+      const adminResponse = await fetch("/api/auth/admin-session");
+      if (adminResponse.ok) {
+        const { user } = await adminResponse.json();
+        setCurrentUser(mapProfile(user));
+        setUserResolved(true);
+        return;
+      }
+      const storedId = window.localStorage.getItem(CURRENT_USER_KEY);
+      if (!storedId) {
+        setUserResolved(true);
+        return;
+      }
       const { data, error } = await supabase.from("profiles").select("*").eq("id", storedId).single();
       if (error || !data || data.is_banned) {
         window.localStorage.removeItem(CURRENT_USER_KEY);
@@ -429,7 +451,7 @@ export function AppProvider({ children }) {
   }, []);
 
   const fetchReports = useCallback(async (actorId) => {
-    const res = await fetch(`/api/admin/reports?actorId=${actorId}`);
+    const res = await fetch("/api/admin/reports");
     if (!res.ok) {
       setReports([]);
       return;
@@ -513,7 +535,7 @@ export function AppProvider({ children }) {
   }, []);
 
   const fetchAdminAnnouncements = useCallback(async (actorId) => {
-    const res = await fetch(`/api/admin/announcements?actorId=${actorId}`);
+    const res = await fetch("/api/admin/announcements");
     if (res.ok) {
       const json = await res.json();
       setAnnouncements(json.announcements || []);
@@ -579,7 +601,7 @@ export function AppProvider({ children }) {
   );
 
   const fetchAnalytics = useCallback(async (actorId) => {
-    const res = await fetch(`/api/admin/analytics?actorId=${actorId}`);
+    const res = await fetch("/api/admin/analytics");
     if (res.ok) {
       const json = await res.json();
       setAnalytics(json);
@@ -641,7 +663,7 @@ export function AppProvider({ children }) {
   const submitReview = useCallback(
     async (reviewedUserId, rating, comment) => {
       if (!currentUser) return { success: false, error: "Not authenticated" };
-      if (!currentUser.verified) return { success: false, error: "Verify your phone number before leaving a review." };
+      if (!currentUser.verified) return { success: false, error: "A verified account is required before leaving a review." };
       if (currentUser.id === reviewedUserId) return { success: false, error: "You cannot review yourself." };
 
       const safeRating = Math.max(1, Math.min(5, Number(rating) || 0));
@@ -817,67 +839,51 @@ export function AppProvider({ children }) {
   const getUserById = useCallback((id) => users.find((u) => u.id === id) || null, [users]);
   const getListingById = useCallback((id) => listings.find((l) => l.id === id) || null, [listings]);
 
-  // ----- Auth (mock OTP, real profile persistence) -----
-  const sendOtp = useCallback((phone) => {
-    const code = "123456";
-    setPendingOtp({ phone, code });
-    return code;
+  // ----- Browser-local email/password demo auth -----
+  const signUpWithEmail = useCallback(async (name, email, password) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    const accounts = getLocalAccounts();
+    if (accounts[normalizedEmail]) return { success: false, message: "An account with this email already exists in this browser." };
+    const { data: inserted, error } = await supabase.from("profiles").insert({
+      phone: null,
+      email: normalizedEmail,
+      name: name.trim() || "New User",
+      avatar_url: `https://i.pravatar.cc/150?u=${encodeURIComponent(normalizedEmail)}`,
+      location: "India",
+      verified: true,
+    }).select().single();
+    if (error) return { success: false, message: error.message };
+    const salt = window.crypto.randomUUID();
+    accounts[normalizedEmail] = { profileId: inserted.id, salt, passwordHash: await hashPassword(password, salt) };
+    window.localStorage.setItem(LOCAL_ACCOUNTS_KEY, JSON.stringify(accounts));
+    window.localStorage.setItem(CURRENT_USER_KEY, inserted.id);
+    const mapped = mapProfile(inserted);
+    setUsers((prev) => [...prev, mapped]);
+    setCurrentUser(mapped);
+    return { success: true, user: mapped };
   }, []);
 
-  const verifyOtp = useCallback(
-    async (phone, code, name) => {
-      if (!pendingOtp || pendingOtp.phone !== phone || pendingOtp.code !== code) {
-        return { success: false, message: "Invalid OTP. Try 123456." };
-      }
-
-      const { data: existing } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("phone", phone)
-        .maybeSingle();
-
-      let profileRow = existing;
-      if (!profileRow) {
-        const { data: inserted, error } = await supabase
-          .from("profiles")
-          .insert({
-            phone,
-            name: name || "New User",
-            avatar_url: `https://i.pravatar.cc/150?u=${encodeURIComponent(phone)}`,
-            location: "India",
-            verified: true,
-          })
-          .select()
-          .single();
-        if (error) return { success: false, message: error.message };
-        profileRow = inserted;
-      } else if (!profileRow.verified) {
-        const { data: updated, error } = await supabase
-          .from("profiles")
-          .update({ verified: true })
-          .eq("id", profileRow.id)
-          .select()
-          .single();
-        if (error) return { success: false, message: error.message };
-        profileRow = updated;
-      }
-
-      if (profileRow.is_banned) {
-        return { success: false, message: "This account has been banned by admin." };
-      }
-
-      const mapped = mapProfile(profileRow);
-      setUsers((prev) => (prev.some((u) => u.id === mapped.id) ? prev : [...prev, mapped]));
-      setCurrentUser(mapped);
-      window.localStorage.setItem(CURRENT_USER_KEY, mapped.id);
-      setPendingOtp(null);
-      return { success: true, user: mapped };
-    },
-    [pendingOtp]
-  );
+  const signInWithEmail = useCallback(async (email, password) => {
+    const adminResponse = await fetch("/api/auth/admin-login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
+    if (adminResponse.ok) {
+      const { user } = await adminResponse.json();
+      setCurrentUser(mapProfile(user));
+      return { success: true, user: mapProfile(user) };
+    }
+    const normalizedEmail = email.trim().toLowerCase();
+    const account = getLocalAccounts()[normalizedEmail];
+    if (!account || (await hashPassword(password, account.salt)) !== account.passwordHash) return { success: false, message: "Invalid email or password." };
+    const { data, error } = await supabase.from("profiles").select("*").eq("id", account.profileId).single();
+    if (error || !data || data.is_banned) return { success: false, message: data?.is_banned ? "This account has been banned by admin." : "This local account is no longer available." };
+    const mapped = mapProfile(data);
+    setCurrentUser(mapped);
+    window.localStorage.setItem(CURRENT_USER_KEY, mapped.id);
+    return { success: true, user: mapped };
+  }, []);
 
   const logout = useCallback(() => {
     window.localStorage.removeItem(CURRENT_USER_KEY);
+    fetch("/api/auth/admin-logout", { method: "POST" }).catch(() => {});
     setCurrentUser(null);
   }, []);
 
@@ -1350,8 +1356,8 @@ export function AppProvider({ children }) {
     currentUser,
     getUserById,
     getListingById,
-    sendOtp,
-    verifyOtp,
+    signUpWithEmail,
+    signInWithEmail,
     logout,
     updateProfile,
     addListing,

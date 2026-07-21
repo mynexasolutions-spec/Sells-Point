@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin, isAdminActor } from "@/lib/supabaseAdmin";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireAdminSession } from "@/lib/adminSession";
 
 export async function GET(request) {
-  const actorId = request.nextUrl.searchParams.get("actorId");
-
-  if (!(await isAdminActor(actorId))) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const session = await requireAdminSession(request);
+  if (!session.ok) return session.response;
 
   const { data, error } = await supabaseAdmin
     .from("reports")
@@ -18,11 +16,10 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
-  const { actorId, reportId, action, note = "" } = await request.json();
-
-  if (!(await isAdminActor(actorId))) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const { reportId, action, note = "" } = await request.json();
+  const session = await requireAdminSession(request);
+  if (!session.ok) return session.response;
+  const actorId = session.profileId;
 
   const { data: report, error: reportError } = await supabaseAdmin.from("reports").select("*").eq("id", reportId).single();
   if (reportError || !report || report.status !== "open") return NextResponse.json({ error: "Open report not found" }, { status: 404 });

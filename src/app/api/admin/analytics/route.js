@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin, isAdminActor } from "@/lib/supabaseAdmin";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireAdminSession } from "@/lib/adminSession";
 
 export async function GET(request) {
-  const actorId = request.nextUrl.searchParams.get("actorId");
-
-  if (!(await isAdminActor(actorId))) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const session = await requireAdminSession(request);
+  if (!session.ok) return session.response;
 
   const [
     { count: totalUsers },

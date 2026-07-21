@@ -169,7 +169,7 @@ export default function ProfilePage({ params }) {
                 {reviewError && <p className="text-sm text-red-500">{reviewError}</p>}
                 {reviewSuccess && <p className="text-sm text-brand-600">{reviewSuccess}</p>}
                 {!currentUser?.verified && (
-                  <p className="text-sm text-amber-700">Verify your phone number before leaving a review.</p>
+                  <p className="text-sm text-amber-700">A verified account is required before leaving a review.</p>
                 )}
                 <button
                   type="submit"

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { listCategoryImages } from "@/lib/cloudinary";
-import { supabaseAdmin, isAdminActor } from "@/lib/supabaseAdmin";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireAdminSession } from "@/lib/adminSession";
 
 const CATEGORY_IMAGE_ALIASES = {
   "08b17b98-45f4-48b7-9ead-584238cb0a28": "appliances",
@@ -96,10 +97,9 @@ function categoryIdForImage(image, categoryIds) {
 }
 
 export async function POST(request) {
-  const { actorId } = await request.json();
-  if (!(await isAdminActor(actorId))) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  await request.json();
+  const session = await requireAdminSession(request);
+  if (!session.ok) return session.response;
 
   const [{ data: categories, error: categoryError }, images] = await Promise.all([
     supabaseAdmin.from("categories").select("id"),

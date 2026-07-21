@@ -121,7 +121,7 @@ export default function PostAdModal({ isOpen, onClose }) {
   const handleSubmit = async () => {
     setSubmitError("");
     if (!currentUser?.verified) {
-      setSubmitError("Verify your phone number before posting an ad.");
+      setSubmitError("A verified account is required before posting an ad.");
       return;
     }
     setSubmitting(true);
@@ -452,7 +452,7 @@ export default function PostAdModal({ isOpen, onClose }) {
                   </p>
                   {!currentUser?.verified && (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                      Verify your phone number before posting an ad.
+                      A verified account is required before posting an ad.
                     </div>
                   )}
                   {submitError && (

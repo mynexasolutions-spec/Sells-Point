@@ -293,7 +293,7 @@ export default function SiteChrome({ children, appName }) {
             <h4 className="font-display text-lg font-bold text-ink-900">Trust &amp; Safety</h4>
             <ul className="mt-4 space-y-3 text-base text-ink-500">
               <li className="flex items-center gap-2">
-                <ShieldCheck size={18} className="text-brand-600" /> Phone-verified sellers
+                <ShieldCheck size={18} className="text-brand-600" /> Verified sellers
               </li>
               <li className="flex items-center gap-2">
                 <MessageCircle size={18} className="text-brand-600" /> Chat before you buy

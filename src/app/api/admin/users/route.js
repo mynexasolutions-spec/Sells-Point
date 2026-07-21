@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin, isAdminActor } from "@/lib/supabaseAdmin";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireAdminSession } from "@/lib/adminSession";
 
 export async function POST(request) {
-  const { actorId, targetUserId, action, note = "" } = await request.json();
-
-  if (!(await isAdminActor(actorId))) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const { targetUserId, action, note = "" } = await request.json();
+  const session = await requireAdminSession(request);
+  if (!session.ok) return session.response;
+  const actorId = session.profileId;
 
   if (!["ban", "unban", "suspend", "unsuspend", "warn"].includes(action)) {
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });

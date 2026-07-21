@@ -120,7 +120,7 @@ export default function AdminPanel() {
       (!listingFilters.status || l.status === listingFilters.status) && (!listingFilters.featured || l.featuredStatus === listingFilters.featured) &&
       (!listingFilters.category || l.category === listingFilters.category) && (!listingFilters.subcategoryId || l.subcategoryId === listingFilters.subcategoryId);
   });
-  const filteredUsers = users.filter((u) => (!userSearch || `${u.name} ${u.phone}`.toLowerCase().includes(userSearch.toLowerCase())) &&
+  const filteredUsers = users.filter((u) => (!userSearch || `${u.name} ${u.email || u.phone || ""}`.toLowerCase().includes(userSearch.toLowerCase())) &&
     (!userFilter || (userFilter === "admin" ? u.isAdmin : userFilter === "suspended" ? u.isBanned : !u.isBanned && !u.isAdmin)));
   const pageListings = filteredListings.slice(listingPage * ADMIN_PAGE_SIZE, (listingPage + 1) * ADMIN_PAGE_SIZE);
   const pageUsers = filteredUsers.slice(userPage * ADMIN_PAGE_SIZE, (userPage + 1) * ADMIN_PAGE_SIZE);
@@ -128,7 +128,7 @@ export default function AdminPanel() {
   useEffect(() => {
     if (tab === "chats" && currentUser) {
       setChatsLoading(true);
-      fetch(`/api/admin/chats?actorId=${currentUser.id}`)
+      fetch("/api/admin/chats")
         .then((r) => r.json())
         .then((json) => setMonitoredChats(json.chats || []))
         .catch(() => setMonitoredChats([]))
@@ -317,12 +317,12 @@ export default function AdminPanel() {
       )}
 
       {tab === "users" && (
-        <div><div className="mb-4 flex flex-wrap gap-2"><input value={userSearch} onChange={(e)=>{setUserSearch(e.target.value);setUserPage(0);}} placeholder="Search name or phone" className="input-field max-w-sm"/><select value={userFilter} onChange={(e)=>{setUserFilter(e.target.value);setUserPage(0);}} className="input-field max-w-xs"><option value="">All users</option><option value="active">Active</option><option value="suspended">Suspended</option><option value="admin">Admins</option></select></div><div className="overflow-hidden rounded-2xl border border-ink-100">
+        <div><div className="mb-4 flex flex-wrap gap-2"><input value={userSearch} onChange={(e)=>{setUserSearch(e.target.value);setUserPage(0);}} placeholder="Search name or email" className="input-field max-w-sm"/><select value={userFilter} onChange={(e)=>{setUserFilter(e.target.value);setUserPage(0);}} className="input-field max-w-xs"><option value="">All users</option><option value="active">Active</option><option value="suspended">Suspended</option><option value="admin">Admins</option></select></div><div className="overflow-hidden rounded-2xl border border-ink-100">
           <table className="w-full text-left text-sm">
             <thead className="bg-ink-50 text-xs uppercase text-ink-500">
               <tr>
                 <th className="px-4 py-3">User</th>
-                <th className="px-4 py-3">Phone</th>
+                <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Rating</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Actions</th>
@@ -338,7 +338,7 @@ export default function AdminPanel() {
                       {u.isAdmin && <span className="badge-brand">Admin</span>}
                     </Link>
                   </td>
-                  <td className="px-4 py-3 text-ink-500">{u.phone}</td>
+                  <td className="px-4 py-3 text-ink-500">{u.email || u.phone || "—"}</td>
                   <td className="px-4 py-3">{u.rating?.toFixed(1) ?? "—"}</td>
                   <td className="px-4 py-3">
                     {u.isBanned ? (

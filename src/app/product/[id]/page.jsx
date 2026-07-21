@@ -148,7 +148,7 @@ export default function ProductPage({ params }) {
       return;
     }
     if (!currentUser.verified) {
-      setChatError("Verify your phone number before starting a chat.");
+      setChatError("A verified account is required before starting a chat.");
       return;
     }
     const chat = await getOrCreateChat(listing.id, listing.sellerId);
