@@ -1,4 +1,4 @@
--- Email/password browser-demo accounts do not collect phone numbers.
+-- Phone remains optional only for the server-created administrator profile.
 alter table profiles alter column phone drop not null;
 
 -- Existing legacy rows may have blank emails; only actual email addresses must be unique.

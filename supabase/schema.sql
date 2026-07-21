@@ -406,7 +406,7 @@ alter publication supabase_realtime add table notifications;
 -- =========================================================
 
 insert into profiles (id, phone, name, email, avatar_url, verified, is_admin, is_banned, location, bio, joined_at, rating, rating_count) values
-  ('00000000-0000-0000-0000-000000000001', '+919999900000', 'Sells Point HQ', 'admin@sellspoint.app', 'https://i.pravatar.cc/150?img=12', true, true, false, 'Bengaluru, IN', 'Official Sells Point administrator account.', now() - interval '700 days', 5, 12),
+  ('00000000-0000-0000-0000-000000000001', null, 'Sells Point HQ', 'admin@sellspoint.app', 'https://i.pravatar.cc/150?img=12', true, true, false, 'Bengaluru, IN', 'Official Sells Point administrator account.', now() - interval '700 days', 5, 12),
   ('00000000-0000-0000-0000-000000000002', '+919812345678', 'Aarav Mehta', 'aarav.mehta@example.com', 'https://i.pravatar.cc/150?img=13', true, false, false, 'Mumbai, IN', 'Upgrading gadgets every year — selling gently used electronics in mint condition.', now() - interval '410 days', 4.8, 37),
   ('00000000-0000-0000-0000-000000000003', '+919823456789', 'Priya Sharma', 'priya.sharma@example.com', 'https://i.pravatar.cc/150?img=32', true, false, false, 'Pune, IN', 'Interior design enthusiast selling premium furniture pieces.', now() - interval '280 days', 4.6, 21),
   ('00000000-0000-0000-0000-000000000004', '+919834567890', 'Rohan Kapoor', 'rohan.kapoor@example.com', 'https://i.pravatar.cc/150?img=15', false, false, false, 'Delhi, IN', 'Car and bike enthusiast. Quick and honest deals.', now() - interval '60 days', 4.2, 9)

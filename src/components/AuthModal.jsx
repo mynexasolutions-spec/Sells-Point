@@ -1,38 +1,41 @@
 "use client";
 
 import { useState } from "react";
-import { X, Mail, LockKeyhole, ShieldCheck, User, ArrowRight } from "lucide-react";
+import { X, Phone, ShieldCheck, User, ArrowRight } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 
 export default function AuthModal({ isOpen, onClose }) {
-  const { signUpWithEmail, signInWithEmail } = useApp();
-  const [mode, setMode] = useState("signin");
+  const { sendOtp, verifyOtp } = useApp();
+  const [step, setStep] = useState("phone");
+  const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [otp, setOtp] = useState("");
   const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [sentCode, setSentCode] = useState("");
 
   if (!isOpen) return null;
 
   const reset = () => {
-    setMode("signin"); setName(""); setEmail(""); setPassword(""); setConfirmPassword(""); setError("");
+    setStep("phone");
+    setPhone("");
+    setName("");
+    setOtp("");
+    setError("");
+    setSentCode("");
   };
   const close = () => { reset(); onClose(); };
-  const switchMode = () => { setMode((value) => value === "signin" ? "signup" : "signin"); setError(""); };
 
-  const handleSubmit = async (event) => {
+  const handleSendOtp = (event) => {
     event.preventDefault();
-    const normalizedEmail = email.trim();
-    if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) return setError("Enter a valid email address.");
-    if (password.length < 8) return setError("Password must be at least 8 characters.");
-    if (mode === "signup" && password !== confirmPassword) return setError("Passwords do not match.");
-    setSubmitting(true);
-    const result = mode === "signup"
-      ? await signUpWithEmail(name, normalizedEmail, password)
-      : await signInWithEmail(normalizedEmail, password);
-    setSubmitting(false);
+    if (phone.trim().length < 8) return setError("Enter a valid phone number.");
+    setSentCode(sendOtp(phone.trim()));
+    setError("");
+    setStep("otp");
+  };
+
+  const handleVerify = async (event) => {
+    event.preventDefault();
+    const result = await verifyOtp(phone.trim(), otp.trim(), name.trim());
     if (result.success) close(); else setError(result.message || "Unable to continue.");
   };
 
@@ -41,18 +44,20 @@ export default function AuthModal({ isOpen, onClose }) {
       <button onClick={close} className="absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-full text-ink-400 hover:bg-ink-100 hover:text-ink-700" aria-label="Close"><X size={18} /></button>
       <div className="mb-6 flex items-center gap-3">
         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-gradient text-white"><ShieldCheck size={22} /></div>
-        <div><h2 className="font-display text-lg font-bold text-ink-900">{mode === "signup" ? "Create your account" : "Welcome back"}</h2><p className="text-sm text-ink-500">{mode === "signup" ? "Sign up to start buying and selling" : "Sign in to enter the marketplace"}</p></div>
+        <div><h2 className="font-display text-lg font-bold text-ink-900">{step === "phone" ? "Welcome to Sells Point" : "Verify your number"}</h2><p className="text-sm text-ink-500">{step === "phone" ? "Sign in with your phone number to buy & sell" : `Enter the code sent to ${phone}`}</p></div>
       </div>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {mode === "signup" && <div><label className="mb-1.5 block text-sm font-medium text-ink-700">Name</label><div className="relative"><User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-400" /><input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Your full name" className="input-field pl-10" autoFocus /></div></div>}
-        <div><label className="mb-1.5 block text-sm font-medium text-ink-700">Email address</label><div className="relative"><Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-400" /><input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" className="input-field pl-10" autoFocus={mode === "signin"} /></div></div>
-        <div><label className="mb-1.5 block text-sm font-medium text-ink-700">Password</label><div className="relative"><LockKeyhole size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-400" /><input required type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 8 characters" className="input-field pl-10" /></div></div>
-        {mode === "signup" && <div><label className="mb-1.5 block text-sm font-medium text-ink-700">Confirm password</label><div className="relative"><LockKeyhole size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-400" /><input required type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Repeat your password" className="input-field pl-10" /></div></div>}
+      {step === "phone" ? <form onSubmit={handleSendOtp} className="space-y-4">
+        <div><label className="mb-1.5 block text-sm font-medium text-ink-700">Phone number</label><div className="relative"><Phone size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-400" /><input required type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+91 98765 43210" className="input-field pl-10" autoFocus /></div></div>
+        <div><label className="mb-1.5 block text-sm font-medium text-ink-700">Name <span className="text-ink-400">(for new accounts)</span></label><div className="relative"><User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-400" /><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Your full name" className="input-field pl-10" /></div></div>
         {error && <p className="text-sm text-red-500">{error}</p>}
-        <button type="submit" disabled={submitting} className="btn-primary w-full">{submitting ? "Please wait…" : mode === "signup" ? "Create account" : "Sign in"} <ArrowRight size={16} /></button>
-      </form>
-      <button type="button" onClick={switchMode} className="btn-ghost mt-3 w-full">{mode === "signup" ? "Already have an account? Sign in" : "New here? Create an account"}</button>
-      <p className="mt-4 text-center text-xs text-ink-400">Regular accounts are saved only in this browser.</p>
+        <button type="submit" className="btn-primary w-full">Send OTP <ArrowRight size={16} /></button>
+      </form> : <form onSubmit={handleVerify} className="space-y-4">
+        <div className="rounded-xl bg-brand-50 px-4 py-3 text-sm text-brand-700">Demo mode: use code <span className="font-bold">{sentCode}</span></div>
+        <div><label className="mb-1.5 block text-sm font-medium text-ink-700">Enter 6-digit OTP</label><input required type="text" inputMode="numeric" value={otp} onChange={(event) => setOtp(event.target.value)} placeholder="••••••" maxLength={6} className="input-field tracking-[0.5em] text-center text-lg" autoFocus /></div>
+        {error && <p className="text-sm text-red-500">{error}</p>}
+        <button type="submit" className="btn-primary w-full">Verify & Continue <ArrowRight size={16} /></button>
+        <button type="button" onClick={() => { setStep("phone"); setError(""); }} className="btn-ghost w-full">Change phone number</button>
+      </form>}
     </div>
   </div>;
 }
