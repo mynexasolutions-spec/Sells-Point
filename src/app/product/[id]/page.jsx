@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -14,10 +14,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Star,
+  ArrowRight,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { useSiteChrome } from "@/context/SiteChromeContext";
 import { supabase } from "@/lib/supabaseClient";
+import ProductCard from "@/components/ProductCard";
 
 const CHAT_CONTINUATION_KEY = "sellspoint_pending_chat_listing";
 
@@ -43,6 +45,7 @@ export default function ProductPage({ params }) {
   const { openAuth } = useSiteChrome();
   const {
     hydrated,
+    listings,
     getListingById,
     getUserById,
     currentUser,
@@ -61,6 +64,18 @@ export default function ProductPage({ params }) {
   const [fetching, setFetching] = useState(false);
 
   const listing = getListingById(id) || fetchedListing;
+  const relatedListings = useMemo(() => {
+    if (!listing) return [];
+
+    return listings
+      .filter((item) => item.id !== listing.id && item.status === "active" && item.category === listing.category)
+      .sort((first, second) => {
+        const firstFeatured = first.featured && first.featuredStatus === "approved" ? 1 : 0;
+        const secondFeatured = second.featured && second.featuredStatus === "approved" ? 1 : 0;
+        return secondFeatured - firstFeatured || Number(second.createdAt || 0) - Number(first.createdAt || 0);
+      })
+      .slice(0, 8);
+  }, [listing, listings]);
 
   const startChat = useCallback(
     async (targetListing) => {
@@ -369,6 +384,33 @@ export default function ProductPage({ params }) {
           )}
         </div>
       </div>
+
+      {relatedListings.length > 0 && (
+        <section className="mt-14 border-t border-ink-100 pt-10 sm:mt-16 sm:pt-12" aria-labelledby="related-products-heading">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 id="related-products-heading" className="font-display text-2xl font-bold text-ink-900 sm:text-3xl">
+                Related Products
+              </h2>
+              <p className="mt-1 text-sm text-ink-500">More active {listing.category} listings you may like.</p>
+            </div>
+            <Link
+              href={`/search?category=${encodeURIComponent(listing.category)}`}
+              className="shrink-0 text-sm font-semibold text-brand-700 hover:text-brand-800 sm:text-base"
+            >
+              View all <ArrowRight aria-hidden="true" size={17} className="inline" />
+            </Link>
+          </div>
+
+          <div className="mt-6 flex snap-x gap-4 overflow-x-auto pb-5 sm:gap-5">
+            {relatedListings.map((relatedListing) => (
+              <div key={relatedListing.id} className="w-[82vw] max-w-[320px] shrink-0 snap-start sm:w-[300px] lg:w-[320px]">
+                <ProductCard listing={relatedListing} />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

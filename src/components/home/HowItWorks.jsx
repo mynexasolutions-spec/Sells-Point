@@ -25,7 +25,7 @@ export default function HowItWorks() {
             ))}
           </div>
         </div>
-        <div className="pointer-events-none mx-auto hidden w-full max-w-[340px] self-end sm:block lg:max-w-[380px]">
+        <div className="pointer-events-none mx-auto w-48 max-w-full self-end sm:w-full sm:max-w-[340px] lg:max-w-[380px]">
           <img
             src="/assets/home/how-it-works.webp"
             alt="Person using SellsPoint on a phone"

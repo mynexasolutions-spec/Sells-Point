@@ -133,6 +133,17 @@ body {
 
 }
 
+@layer utilities {
+  .scrollbar-hidden {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hidden::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @keyframes shimmer {
   100% {
     transform: translateX(100%);

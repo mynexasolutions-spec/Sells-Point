@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ArrowRight } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { useSiteChrome } from "@/context/SiteChromeContext";
 
@@ -12,28 +12,28 @@ const promotions = [
     title: "Sell anything, free",
     sub: "Post your ad in under a minute — photos, video, and your price.",
     cta: "Post Your Ad",
-    image: "/assets/home/slides/slide 1.jpeg",
+    image: "/assets/home/slides/slide 1.png",
     action: "post",
   },
   {
     title: "Deals near you",
     sub: "Find great second-hand finds from people in your own city.",
     cta: "Browse Listings",
-    image: "/assets/home/slides/slide 2.jpeg",
+    image: "/assets/home/slides/slide 2.png",
     action: "browse",
   },
   {
     title: "Your number stays private",
     sub: "Chat with buyers and sellers inside the app. Nothing shared.",
     cta: "See How It Works",
-    image: "/assets/home/slides/slide 3.jpeg",
+    image: "/assets/home/slides/slide 3.png",
     action: "how-it-works",
   },
   {
     title: "Get seen faster",
     sub: "Boost your listing to the top of search for a full month.",
     cta: "Promote an Ad",
-    image: "/assets/home/slides/slide 4.jpeg",
+    image: "/assets/home/slides/slide 4.png",
     action: "post",
   },
 ];
@@ -49,9 +49,16 @@ export default function Hero() {
   const [isTabHidden, setIsTabHidden] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [missingImages, setMissingImages] = useState(() => new Set());
+  const [controlsVisible, setControlsVisible] = useState(false);
+  const controlsTimerRef = useRef(null);
 
   const goToSlide = (index) => setActiveSlide((index + promotions.length) % promotions.length);
   const postAd = () => (currentUser ? openPostAd() : openAuth());
+  const revealMobileControls = () => {
+    window.clearTimeout(controlsTimerRef.current);
+    setControlsVisible(true);
+    controlsTimerRef.current = window.setTimeout(() => setControlsVisible(false), 2200);
+  };
 
   const handleAction = (action) => {
     if (action === "post") {
@@ -83,12 +90,17 @@ export default function Hero() {
 
   useEffect(() => {
     if (paused || isTabHidden || reducedMotion) return undefined;
-    const interval = window.setInterval(() => goToSlide(activeSlide + 1), 6000);
+    const interval = window.setInterval(() => goToSlide(activeSlide + 1), 4000);
     return () => window.clearInterval(interval);
   }, [activeSlide, isTabHidden, paused, reducedMotion]);
 
+  useEffect(() => () => window.clearTimeout(controlsTimerRef.current), []);
+
   const handleBlur = (event) => {
-    if (!carouselRef.current?.contains(event.relatedTarget)) setPaused(false);
+    if (!carouselRef.current?.contains(event.relatedTarget)) {
+      setPaused(false);
+      setControlsVisible(false);
+    }
   };
 
   const handleTouchEnd = (event) => {
@@ -99,15 +111,15 @@ export default function Hero() {
   };
 
   return (
-    <section className="hero-wash py-5 sm:py-6 md:py-8">
-      <div className="home-container">
+    <section className="pt-5 pb-2 sm:pt-6 md:pt-8 w-full max-w-full overflow-hidden">
+      <div className="home-container relative">
         <div
           ref={carouselRef}
           aria-roledescription="carousel"
           aria-label="SellsPoint promotions"
-          onMouseEnter={() => setPaused(true)}
-          onMouseLeave={() => setPaused(false)}
-          onFocusCapture={() => setPaused(true)}
+          onMouseEnter={() => { setPaused(true); setControlsVisible(true); }}
+          onMouseLeave={() => { setPaused(false); setControlsVisible(false); }}
+          onFocusCapture={() => { setPaused(true); setControlsVisible(true); }}
           onBlurCapture={handleBlur}
           onKeyDown={(event) => {
             if (event.key === "ArrowLeft") {
@@ -121,11 +133,16 @@ export default function Hero() {
           }}
           onTouchStart={(event) => {
             touchStartX.current = event.touches[0].clientX;
+            revealMobileControls();
           }}
           onTouchEnd={handleTouchEnd}
-          className="relative mx-auto mt-2 max-w-[1360px] sm:mt-3"
+          className="group relative mx-auto mt-2 w-full max-w-[1360px]"
         >
-          <div className="relative aspect-[1.48/1] overflow-hidden rounded-2xl bg-brand-800 shadow-neutral sm:aspect-[1.8/1] md:aspect-[2.1/1]" aria-live="polite">
+          {/* Banner Container */}
+          <div
+            className="relative aspect-[1.48/1] overflow-hidden rounded-[16px] bg-brand-800 shadow-neutral sm:aspect-[1.8/1] md:aspect-[3/1]"
+            aria-live="polite"
+          >
             {promotions.map((promotion, index) => {
               const isActive = index === activeSlide;
               const imageMissing = missingImages.has(index);
@@ -135,54 +152,44 @@ export default function Hero() {
                 <div
                   key={promotion.title}
                   aria-hidden={!isActive}
-                  className={`absolute inset-0 transition-opacity duration-[400ms] ${
+                  className={`absolute inset-0 transition-opacity duration-[500ms] ${
                     isActive ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
                   }`}
                 >
-                  {imageMissing ? (
-                    <div className="absolute inset-0 bg-brand-600" aria-hidden="true" />
-                  ) : (
-                    <Image
-                      src={promotion.image}
-                      alt=""
-                      fill
-                      sizes="(max-width: 1280px) 100vw, 1200px"
-                      priority={index === 0}
-                      onError={() => setMissingImages((previous) => new Set(previous).add(index))}
-                      className="object-cover object-center"
-                    />
+                  {/* Option 2 Layout: Transparent PNG Image pinned to the right */}
+                  {!missingImages.has(index) && (
+                    <div className="absolute right-0 top-0 z-0 flex h-full w-[55%] items-end justify-end pr-2 sm:w-[50%] sm:pr-8">
+                      <Image
+                        src={promotion.image}
+                        alt=""
+                        width={800}
+                        height={600}
+                        sizes="(max-width: 1280px) 100vw, 1200px"
+                        priority={index === 0}
+                        onError={() => setMissingImages((previous) => new Set(previous).add(index))}
+                        className="h-[90%] w-auto max-h-full max-w-none object-contain object-right drop-shadow-xl sm:h-full"
+                      />
+                    </div>
                   )}
-                  <div
-                    className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/35 to-transparent"
-                    aria-hidden="true"
-                  />
-                  <div className="relative z-10 flex h-full items-center px-6 py-5 sm:px-10 sm:py-0 md:px-14 lg:px-20">
-                    <div className="max-w-[64%] text-white sm:max-w-[49%] lg:max-w-xl">
-                      <Heading className="font-display text-xl font-extrabold leading-[1.05] sm:text-3xl md:text-4xl lg:text-5xl">
+
+                  {/* Text Container directly over background (Left Side) */}
+                  <div className="relative z-10 flex h-full items-center px-6 py-5 sm:px-10 sm:py-0 md:px-14 lg:px-20 w-[90%] sm:w-[60%] lg:w-[55%]">
+                    <div>
+                      <Heading className="font-display text-2xl font-extrabold leading-[1.05] sm:text-4xl md:text-5xl lg:text-6xl text-white">
                         {promotion.title}
                       </Heading>
-                      <p className="mt-1 max-w-md text-[10px] leading-snug text-white/85 sm:mt-2 sm:text-sm md:mt-4 md:text-lg">
+                      <p className="mt-2 text-sm font-medium leading-snug text-brand-50 sm:mt-3 md:mt-5 md:text-xl">
                         {promotion.sub}
                       </p>
-                      <div className="mt-2 flex flex-wrap gap-2 sm:mt-4 md:mt-6 md:gap-3">
+                      <div className="mt-5 flex flex-wrap gap-2 md:mt-8 md:gap-3">
                         <button
                           type="button"
                           tabIndex={isActive ? 0 : -1}
                           onClick={() => handleAction(promotion.action)}
-                          className="btn-pill bg-white px-3 py-1.5 text-[10px] text-brand-700 hover:bg-brand-50 sm:px-4 sm:py-2 sm:text-xs md:px-5 md:py-2.5 md:text-sm"
+                          className="btn-pill inline-flex items-center rounded-xl bg-ink-950 px-5 py-2.5 sm:px-6 sm:py-3.5 text-xs sm:text-sm md:text-base font-semibold text-white shadow-lg transition-transform hover:-translate-y-0.5 hover:bg-ink-800 focus:ring-4 focus:ring-ink-200 border-none"
                         >
-                          {promotion.cta} <ArrowRight size={16} />
+                          {promotion.cta} <ArrowRight size={18} className="ml-1.5" />
                         </button>
-                        {index === 0 && (
-                          <button
-                            type="button"
-                            tabIndex={isActive ? 0 : -1}
-                            onClick={() => router.push("/search")}
-                            className="btn-pill hidden border border-white/70 bg-white/10 px-4 py-2 text-xs text-white hover:bg-white/20 sm:inline-flex md:px-5 md:py-2.5 md:text-sm"
-                          >
-                            Browse Listings
-                          </button>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -191,32 +198,34 @@ export default function Hero() {
             })}
           </div>
 
+          {/* Layout Arrows - Positioned exactly on border edges as 'Tabs' */}
           <button
             type="button"
             onClick={() => goToSlide(activeSlide - 1)}
-            className="absolute bottom-2 right-11 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-ink-800 shadow-sm transition-colors hover:bg-white focus-visible:outline-offset-2 sm:-left-6 sm:right-auto sm:top-1/2 sm:h-10 sm:w-10 sm:-translate-y-1/2 lg:h-11 lg:w-11"
+            className={`pointer-events-none absolute left-[-1px] top-1/2 z-20 flex h-16 w-10 -translate-y-1/2 items-center justify-center rounded-r-[16px] bg-white text-ink-600 opacity-0 shadow-[4px_0_12px_rgba(0,0,0,0.08)] outline-none transition-all duration-200 hover:text-ink-900 focus-visible:outline-offset-2 sm:h-20 sm:w-11 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 ${controlsVisible ? "pointer-events-auto opacity-100" : ""}`}
             aria-label="Previous slide"
           >
-            <ChevronLeft size={22} />
+            <ChevronLeft size={24} className="ml-1" strokeWidth={2.5} />
           </button>
           <button
             type="button"
             onClick={() => goToSlide(activeSlide + 1)}
-            className="absolute bottom-2 right-2 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-ink-800 shadow-sm transition-colors hover:bg-white focus-visible:outline-offset-2 sm:-right-6 sm:top-1/2 sm:h-10 sm:w-10 sm:-translate-y-1/2 lg:h-11 lg:w-11"
+            className={`pointer-events-none absolute right-[-1px] top-1/2 z-20 flex h-16 w-10 -translate-y-1/2 items-center justify-center rounded-l-[16px] bg-white text-ink-600 opacity-0 shadow-[-4px_0_12px_rgba(0,0,0,0.08)] outline-none transition-all duration-200 hover:text-ink-900 focus-visible:outline-offset-2 sm:h-20 sm:w-11 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 ${controlsVisible ? "pointer-events-auto opacity-100" : ""}`}
             aria-label="Next slide"
           >
-            <ChevronRight size={22} />
+            <ChevronRight size={24} className="mr-1" strokeWidth={2.5} />
           </button>
         </div>
 
-        <div className="mt-3 flex justify-center gap-2">
+        {/* Carousel Dots */}
+        <div className="mt-4 flex justify-center gap-1.5 md:gap-2">
           {promotions.map((promotion, index) => (
             <button
               key={promotion.title}
               type="button"
               onClick={() => goToSlide(index)}
-              className={`h-2.5 w-2.5 rounded-full bg-brand-600 transition-opacity focus-visible:outline-offset-2 ${
-                activeSlide === index ? "opacity-100" : "opacity-30"
+              className={`h-1.5 rounded-full transition-all focus-visible:outline-offset-2 ${
+                activeSlide === index ? "w-6 bg-ink-400" : "w-4 bg-ink-200 hover:bg-ink-300"
               }`}
               aria-label={`Go to slide ${index + 1}`}
               aria-current={activeSlide === index ? "true" : undefined}
