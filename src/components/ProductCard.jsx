@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Heart, MapPin, PlayCircle, Sparkles } from "lucide-react";
+import { Heart, MapPin, PlayCircle, Sparkles, Star } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { useSiteChrome } from "@/context/SiteChromeContext";
 
@@ -25,7 +25,7 @@ const relativeTime = (timestamp) => {
   return `${months}mo ago`;
 };
 
-export default function ProductCard({ listing }) {
+export default function ProductCard({ listing, sizes = "(max-width: 640px) 50vw, (max-width: 1024px) 50vw, 340px" }) {
   const { toggleFavorite, isFavorite, currentUser } = useApp();
   const { openAuth } = useSiteChrome();
   const fav = isFavorite(listing.id);
@@ -37,13 +37,17 @@ export default function ProductCard({ listing }) {
   const status = featured
     ? { label: "Featured", className: "bg-amber-100 text-amber-800", icon: true }
     : discount > 0
-      ? { label: "Best Price", className: "bg-brand-600 text-white" }
+      ? { label: "Lowest Price", className: "bg-ink-900 text-white" }
       : isNew
         ? { label: "New", className: "bg-blue-600 text-white" }
         : null;
+  // Deterministic mock rating (display-only until the ratings/reviews phase ships real data)
+  const ratingSeed = String(listing.id).split("").reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+  const mockRating = (4 + (ratingSeed % 9) / 10).toFixed(1);
+  const offAmount = discount > 0 ? listing.originalPrice - listing.price : 0;
 
   return (
-    <article className={`group card-neutral relative overflow-hidden ${featured ? "ring-1 ring-amber-200" : ""}`}>
+    <article className={`group relative overflow-hidden rounded-xl border border-ink-100 bg-white ${featured ? "ring-1 ring-amber-200" : ""}`}>
       <Link href={`/product/${listing.id}`} className="block" aria-label={`View ${listing.title}`}>
         <div className="relative aspect-[4/3] w-full overflow-hidden bg-ink-100">
           {listing.images?.[0] ? (
@@ -51,27 +55,36 @@ export default function ProductCard({ listing }) {
               src={listing.images[0]}
               alt={listing.title}
               fill
-              sizes="(max-width: 640px) 84vw, (max-width: 1024px) 50vw, 340px"
-              className="object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+              sizes={sizes}
+              className="object-contain bg-ink-50"
             />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-ink-400">No image</div>
           )}
           {listing.video && <span className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-ink-950/70 px-2 py-1 text-xs text-white"><PlayCircle size={13} /> Video</span>}
           {listing.status === "sold" && <div className="absolute inset-0 flex items-center justify-center bg-ink-950/55"><span className="rounded-full bg-white px-4 py-1.5 text-sm font-bold uppercase">Sold Out</span></div>}
-          {status && (
-            <span className={`absolute left-2 top-2 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold shadow-sm ${status.className}`}>
-              {status.icon && <Sparkles size={12} />} {status.label}
-            </span>
-          )}
         </div>
-        <div className="p-4 sm:p-5">
-          <h3 className="line-clamp-2 min-h-12 font-display text-base font-semibold leading-6 text-ink-900 sm:text-lg">{listing.title}</h3>
-          <div className="mt-2 flex min-w-0 items-baseline gap-2">
-            <span className="shrink-0 font-display text-lg font-bold text-ink-900 sm:text-xl">{formatPrice(listing.price)}</span>
-            {discount > 0 && <span className="min-w-0 truncate text-xs text-ink-400 line-through">{formatPrice(listing.originalPrice)}</span>}
+        <div className="p-3 sm:p-4">
+          <p className={`text-xs font-semibold ${offAmount > 0 ? "text-brand-600" : "invisible"}`} aria-hidden={offAmount > 0 ? undefined : "true"}>
+            {offAmount > 0 ? `${formatPrice(offAmount)} OFF` : " "}
+          </p>
+          <h3 className="mt-0.5 line-clamp-2 min-h-10 font-display text-sm font-semibold leading-5 text-ink-900 sm:min-h-12 sm:text-base sm:leading-6">{listing.title}</h3>
+          <div className="mt-1.5 flex items-center gap-2">
+            {status && (
+              <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold ${status.className}`}>
+                {status.icon && <Sparkles size={11} />} {status.label}
+              </span>
+            )}
+            <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-ink-700">
+              <Star size={12} className="fill-amber-400 text-amber-400" /> {mockRating}
+            </span>
           </div>
-          <div className="mt-3 flex items-center justify-between gap-2 text-sm text-ink-500">
+          <div className="mt-1.5 flex flex-wrap items-baseline gap-x-1.5">
+            {discount > 0 && <span className="text-[11px] font-bold text-brand-600 sm:text-xs">-{discount}%</span>}
+            <span className="font-display text-[15px] font-bold text-ink-900 min-[390px]:text-base sm:text-lg">{formatPrice(listing.price)}</span>
+            {discount > 0 && <span className="text-[11px] text-ink-400 line-through sm:text-xs">{formatPrice(listing.originalPrice)}</span>}
+          </div>
+          <div className="mt-2.5 flex items-center justify-between gap-2 text-xs text-ink-500 sm:text-sm">
             <span className="truncate">{relativeTime(listing.createdAt)}</span>
             <span className="hidden min-w-0 items-center gap-1 min-[390px]:flex"><MapPin size={12} className="shrink-0" /><span className="truncate">{listing.distanceKm != null ? `${listing.distanceKm.toFixed(1)} km` : listing.location}</span></span>
           </div>

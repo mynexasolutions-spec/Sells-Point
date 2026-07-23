@@ -7,6 +7,7 @@ import {
   Bell,
   ChevronDown,
   Heart,
+  ShoppingCart,
   LayoutDashboard,
   LogOut,
   MessageCircle,
@@ -212,6 +213,7 @@ export default function Navbar() {
             >
               <Heart size={20} />
             </Link>
+            {currentUser && <Link href="/dashboard?tab=cart" className="flex h-11 w-11 items-center justify-center rounded-full text-ink-600 hover:bg-ink-50 hover:text-brand-700" aria-label="Shopping cart"><ShoppingCart size={20} /></Link>}
             {currentUser && (
               <Link
                 href="/chat"

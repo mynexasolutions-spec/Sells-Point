@@ -6,6 +6,7 @@ import { Package, Heart, CheckCircle2, Sparkles, Trash2, Pencil, Clock, RotateCw
 import { useApp } from "@/context/AppContext";
 import ProductCard from "@/components/ProductCard";
 import EditListingModal from "@/components/EditListingModal";
+import MockCheckoutModal from "@/components/MockCheckoutModal";
 
 function isExpired(listing) {
   if (listing.status === "expired") return true;
@@ -49,10 +50,14 @@ export default function DashboardPage() {
   const [tab, setTab] = useState("active");
   const [editingListing, setEditingListing] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [orders, setOrders] = useState([]);
+  const [sales, setSales] = useState([]);
+  const [cartItems, setCartItems] = useState([]);
+  const [checkoutCart, setCheckoutCart] = useState(false);
 
   useEffect(() => {
     const requestedTab = new URLSearchParams(window.location.search).get("tab");
-    if (["active", "sold", "expired", "saved", "blocked"].includes(requestedTab)) {
+    if (["active", "sold", "expired", "saved", "blocked", "orders", "sales", "cart"].includes(requestedTab)) {
       setTab(requestedTab);
     }
   }, []);
@@ -61,6 +66,16 @@ export default function DashboardPage() {
     if (!currentUser) router.push("/");
     else if (currentUser.isAdmin) router.replace("/admin");
   }, [currentUser, router]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    Promise.all(["buyer", "seller"].map(async (type) => {
+      const response = await fetch(`/api/orders?actorId=${currentUser.id}&type=${type}`);
+      const json = await response.json().catch(() => ({}));
+      if (response.ok) type === "buyer" ? setOrders(json.orders || []) : setSales(json.orders || []);
+    }));
+    fetch(`/api/cart?buyerId=${currentUser.id}`).then((response) => response.json()).then((json) => setCartItems(json.items || [])).catch(() => setCartItems([]));
+  }, [currentUser]);
 
   if (!currentUser || currentUser.isAdmin) return null;
 
@@ -75,6 +90,9 @@ export default function DashboardPage() {
     { id: "expired", label: `Expired (${expired.length})`, icon: Clock },
     { id: "saved", label: `Saved (${favoriteListings.length})`, icon: Heart },
     { id: "blocked", label: `Blocked (${blockedUsers.length})`, icon: ShieldOff },
+    { id: "orders", label: `My Orders (${orders.length})`, icon: Package },
+    { id: "sales", label: `Sales (${sales.length})`, icon: CheckCircle2 },
+    { id: "cart", label: `Cart (${cartItems.length})`, icon: Heart },
   ];
 
   return (
@@ -104,7 +122,9 @@ export default function DashboardPage() {
         })}
       </div>
 
-      {tab === "blocked" ? (
+      {tab === "cart" ? (cartItems.length === 0 ? <p className="py-16 text-center text-sm text-ink-400">Your cart is empty.</p> : <div className="space-y-3">{cartItems.map((item) => <div key={item.id} className="card flex gap-3 p-3"><img src={item.listings?.images?.[0]} alt="" className="h-16 w-16 rounded-xl bg-ink-50 object-contain"/><div className="flex-1"><p className="font-semibold">{item.listings?.title}</p><p className="text-sm text-ink-500">{formatPrice(item.listings?.price || 0)}</p></div></div>)}<button onClick={() => setCheckoutCart(true)} className="btn-primary w-full">Checkout cart (mock)</button></div>) : tab === "orders" || tab === "sales" ? (
+        (tab === "orders" ? orders : sales).length === 0 ? <p className="py-16 text-center text-sm text-ink-400">No {tab === "orders" ? "orders" : "sales"} yet.</p> : <div className="space-y-3">{(tab === "orders" ? orders : sales).map((order) => <div key={order.id} className="card p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-semibold text-ink-900">Order #{order.id.slice(0, 8).toUpperCase()}</p><p className="text-sm text-ink-500">{new Date(order.created_at).toLocaleDateString("en-IN")} · {order.order_items?.length || 0} item(s)</p></div><span className="badge-brand capitalize">{order.status.replaceAll("_", " ")}</span></div><div className="mt-3 space-y-1 text-sm text-ink-600">{order.order_items?.map((item) => <p key={item.id}>{item.title} × {item.quantity}</p>)}</div><p className="mt-3 font-display font-bold text-ink-900">{formatPrice(order.subtotal)}</p></div>)}</div>
+      ) : tab === "blocked" ? (
         blockedUsers.length === 0 ? (
           <p className="py-16 text-center text-sm text-ink-400">
             You haven't blocked any users.
@@ -164,7 +184,7 @@ export default function DashboardPage() {
               <img
                 src={l.images?.[0]}
                 alt=""
-                className="h-20 w-full rounded-xl object-cover sm:w-28"
+                className="h-20 w-full rounded-xl bg-ink-50 object-contain sm:w-28"
               />
               <div className="flex-1">
                 <p className="font-semibold text-ink-900">{l.title}</p>
@@ -247,6 +267,7 @@ export default function DashboardPage() {
         }}
         listing={editingListing}
       />
+      <MockCheckoutModal open={checkoutCart} onClose={() => setCheckoutCart(false)} source="cart" items={cartItems.map((item) => ({ ...item.listings, quantity: item.quantity, selectedSpecifications: item.selected_specifications || {} }))} />
     </div>
   );
 }

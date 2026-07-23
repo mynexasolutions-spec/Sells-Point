@@ -27,6 +27,7 @@ export default function EditListingModal({ isOpen, onClose, listing, adminMode =
     title: listing?.title || "",
     category: listing?.category || "",
     subcategoryId: listing?.subcategoryId || "",
+    specifications: listing?.specifications || { storage: "", color: "", ram: "", warrantyMonths: "" },
     condition: listing?.condition || "Good",
     description: listing?.description || "",
     images: listing?.images || [],
@@ -44,6 +45,7 @@ export default function EditListingModal({ isOpen, onClose, listing, adminMode =
         title: listing.title || "",
         category: listing.category || "",
         subcategoryId: listing.subcategoryId || "",
+        specifications: listing.specifications || { storage: "", color: "", ram: "", warrantyMonths: "" },
         condition: listing.condition || "Good",
         description: listing.description || "",
         images: listing.images || [],
@@ -230,6 +232,7 @@ export default function EditListingModal({ isOpen, onClose, listing, adminMode =
                         onChange={(e) => set({ category: e.target.value, subcategoryId: "" })}
                         className="input-field"
                       >
+                        <option value="" disabled>Select a category</option>
                         {categories.map((c) => (
                           <option key={c.id} value={c.id}>
                             {c.label}
@@ -273,6 +276,7 @@ export default function EditListingModal({ isOpen, onClose, listing, adminMode =
                       className="input-field resize-none"
                     />
                   </div>
+                  {["mobiles", "laptops"].includes(form.category) && <div className="rounded-xl bg-ink-50 p-3"><p className="mb-2 text-sm font-semibold text-ink-700">Product specifications <span className="font-normal text-ink-400">Use | for choices</span></p><div className="grid grid-cols-2 gap-2">{[["storage", "Storage"], ["color", "Color"], ["ram", "RAM"], ["warrantyMonths", "Warranty months"]].map(([key, label]) => <input key={key} className="input-field" placeholder={label} value={form.specifications?.[key] || ""} onChange={(e) => set({ specifications: { ...form.specifications, [key]: e.target.value } })} />)}</div></div>}
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-ink-700">
                       Location
@@ -304,7 +308,7 @@ export default function EditListingModal({ isOpen, onClose, listing, adminMode =
                     <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
                       {form.images.map((src, idx) => (
                         <div key={idx} className="group relative aspect-square overflow-hidden rounded-xl border border-ink-100">
-                          <img src={src} alt="" className="h-full w-full object-cover" />
+                          <img src={src} alt="" className="h-full w-full object-contain bg-ink-50" />
                           <button
                             onClick={() => removeImage(idx)}
                             className="absolute right-1 top-1 rounded-full bg-ink-950/70 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100"
@@ -400,7 +404,7 @@ export default function EditListingModal({ isOpen, onClose, listing, adminMode =
                 <div className="space-y-4">
                   <div className="overflow-hidden rounded-2xl border border-ink-100">
                     {form.images[0] && (
-                      <img src={form.images[0]} alt="" className="h-44 w-full object-cover" />
+                      <img src={form.images[0]} alt="" className="h-44 w-full object-contain bg-ink-50" />
                     )}
                     <div className="p-4">
                       <h4 className="font-display font-bold text-ink-900">{form.title}</h4>

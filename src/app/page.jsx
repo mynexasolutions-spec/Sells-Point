@@ -2,10 +2,14 @@ import { redirect } from "next/navigation";
 import Hero from "@/components/home/Hero";
 import CategoryGrid from "@/components/home/CategoryGrid";
 import FeaturedDeals from "@/components/home/FeaturedDeals";
+import StatsBar from "@/components/home/StatsBar";
+import Testimonials from "@/components/home/Testimonials";
+import BrandStrip from "@/components/home/BrandStrip";
+import Articles from "@/components/home/Articles";
+import HotDeals from "@/components/home/HotDeals";
 import HowItWorks from "@/components/home/HowItWorks";
 import CtaBand from "@/components/home/CtaBand";
 import WhyChoose from "@/components/home/WhyChoose";
-import StatsBar from "@/components/home/StatsBar";
 
 const LEGACY_SEARCH_KEYS = new Set([
   "q", "category", "subcategory", "loc", "min", "max", "cond", "since",
@@ -30,10 +34,14 @@ export default function HomePage({ searchParams = {} }) {
       <Hero />
       <CategoryGrid />
       <FeaturedDeals />
+      <StatsBar />
+      <Testimonials />
+      <BrandStrip />
+      <Articles />
+      <HotDeals />
       <HowItWorks />
       <CtaBand />
       <WhyChoose />
-      <StatsBar />
     </>
   );
 }

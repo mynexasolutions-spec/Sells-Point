@@ -5,15 +5,19 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   CircleUserRound,
+  ChevronRight,
+  CircleHelp,
   House,
   LogIn,
   LogOut,
   Menu,
   MessageCircle,
+  MapPin,
   PlusCircle,
+  Settings,
+  Store,
   Search,
   ShieldCheck,
-  Store,
   X,
 } from "lucide-react";
 import AuthModal from "@/components/AuthModal";
@@ -23,7 +27,7 @@ import PostAdModal from "@/components/PostAdModal";
 import { useApp } from "@/context/AppContext";
 import { SiteChromeProvider } from "@/context/SiteChromeContext";
 
-function MobileHeader({ onMenuOpen }) {
+function MobileHeader({ onMenuOpen, hidden = false }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
 
@@ -34,7 +38,7 @@ function MobileHeader({ onMenuOpen }) {
   };
 
   return (
-    <header className="fixed inset-x-0 top-0 z-40 border-b border-ink-100 bg-white md:hidden">
+    <header className={`fixed inset-x-0 top-0 z-40 border-b border-ink-100 bg-white md:hidden ${hidden ? "hidden" : ""}`}>
       <div className="flex h-14 items-center justify-between px-4">
         <Link href="/" aria-label="SellsPoint home">
           <BrandLogo compact className="h-9 w-[112px] min-[390px]:w-[128px]" />
@@ -94,9 +98,12 @@ function MobileDrawer({ isOpen, onClose, onAuth, onPostAd }) {
   return (
     <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label="Navigation menu">
       <button type="button" className="absolute inset-0 bg-ink-950/35" aria-label="Close menu" onClick={onClose} />
-      <aside className="absolute inset-y-0 right-0 flex h-[100dvh] w-[min(86vw,360px)] flex-col bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-ink-100 px-5 py-4">
-          <BrandLogo compact />
+      <aside className="absolute inset-y-0 left-0 flex h-[100dvh] w-[calc(100%-16px)] max-w-[400px] flex-col bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3">
+          <button type="button" className="flex items-center gap-2 text-left" onClick={() => router.push("/search") }>
+            <MapPin size={19} className="text-brand-600" />
+            <span className="text-xs text-ink-500">Your city<br /><strong className="text-sm text-ink-900">{currentUser?.location || "Select location"}</strong></span>
+          </button>
           <button
             type="button"
             onClick={onClose}
@@ -106,68 +113,51 @@ function MobileDrawer({ isOpen, onClose, onAuth, onPostAd }) {
             <X size={21} />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-5">
+        <div className="flex-1 overflow-y-auto px-4 py-4">
           {currentUser ? (
-            <div className="rounded-2xl bg-ink-50 p-4">
-              <p className="font-semibold text-ink-900">{currentUser.name}</p>
-              <Link
-                href="/dashboard"
-                onClick={onClose}
-                className="mt-3 flex items-center gap-2 text-sm font-semibold text-brand-700"
-              >
-                <CircleUserRound size={16} /> My dashboard
+            <div className="rounded-lg bg-ink-950 p-4 text-white">
+              <p className="font-semibold">{currentUser.name}</p>
+              <p className="mt-1 truncate text-xs text-white/60">{currentUser.phone || currentUser.email || "SellsPoint member"}</p>
+              <Link href="/dashboard" onClick={onClose} className="mt-3 flex items-center justify-between text-sm font-semibold">
+                My dashboard <ChevronRight size={17} />
               </Link>
             </div>
           ) : (
-            <div className="rounded-2xl bg-ink-50 p-4">
+            <div className="rounded-lg bg-ink-950 p-4 text-white">
               <p className="text-sm text-ink-600">Sign in to post ads, save listings, and chat with sellers.</p>
               <button
                 type="button"
                 onClick={closeThen(onAuth)}
-                className="mt-3 flex items-center gap-2 text-sm font-semibold text-brand-700"
+                className="mt-3 flex items-center gap-2 text-sm font-semibold text-brand-300"
               >
                 <LogIn size={16} /> Log in or create an account
               </button>
             </div>
           )}
 
+          {currentUser && !currentUser.verified && <button type="button" onClick={closeThen(onAuth)} className="mt-2 w-full rounded-md bg-amber-100 px-3 py-2 text-left text-xs font-semibold text-amber-900">Account verification pending. Tap to verify.</button>}
+
           <button
             type="button"
             onClick={closeThen(() => (currentUser ? onPostAd() : onAuth()))}
-            className="btn-pill mt-5 w-full bg-brand-600 text-sm text-white hover:bg-brand-700"
+            className="btn-pill mt-4 w-full bg-brand-600 text-sm text-white hover:bg-brand-700"
           >
             <PlusCircle size={17} /> Post your ad
           </button>
 
-          <nav aria-label="Mobile drawer links" className="mt-7 border-t border-ink-100 pt-4">
-            <Link
-              href="/search"
-              onClick={onClose}
-              className="block rounded-xl px-3 py-3 text-sm font-semibold text-ink-700 hover:bg-ink-50"
-            >
-              Browse listings
-            </Link>
-            <Link
-              href="/dashboard"
-              onClick={onClose}
-              className="block rounded-xl px-3 py-3 text-sm font-semibold text-ink-700 hover:bg-ink-50"
-            >
-              My dashboard
-            </Link>
-            <Link
-              href="/chat"
-              onClick={onClose}
-              className="block rounded-xl px-3 py-3 text-sm font-semibold text-ink-700 hover:bg-ink-50"
-            >
-              Messages
-            </Link>
-            <a
-              href={`mailto:${process.env.NEXT_PUBLIC_SUPPORT_EMAIL || "support@sellspoint.app"}`}
-              onClick={onClose}
-              className="block rounded-xl px-3 py-3 text-sm font-semibold text-ink-700 hover:bg-ink-50"
-            >
-              Contact
-            </a>
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <Link href="/dashboard" onClick={onClose} className="rounded-lg border border-ink-100 p-3 text-center text-xs font-medium"><Store className="mx-auto mb-1 text-brand-600" size={21} />My listings</Link>
+            <Link href="/chat" onClick={onClose} className="rounded-lg border border-ink-100 p-3 text-center text-xs font-medium"><MessageCircle className="mx-auto mb-1 text-brand-600" size={21} />Messages</Link>
+            <a href={`mailto:${process.env.NEXT_PUBLIC_SUPPORT_EMAIL || "support@sellspoint.app"}`} className="rounded-lg border border-ink-100 p-3 text-center text-xs font-medium"><CircleHelp className="mx-auto mb-1 text-brand-600" size={21} />Help</a>
+          </div>
+
+          <nav aria-label="Mobile drawer links" className="mt-5 border-y border-ink-100">
+            {[
+              ["Browse listings", "/search", Search],
+              ["My dashboard", "/dashboard", Store],
+              ["Messages", "/chat", MessageCircle],
+              ["Account settings", "/dashboard", Settings],
+            ].map(([label, href, Icon]) => <Link key={label} href={href} onClick={onClose} className="flex items-center gap-3 border-b border-ink-100 py-3 text-sm text-ink-700 last:border-0"><Icon size={18} className="text-brand-600" /><span className="flex-1">{label}</span><ChevronRight size={16} className="text-ink-400" /></Link>)}
           </nav>
         </div>
         {currentUser && (
@@ -242,6 +232,7 @@ export default function SiteChrome({ children, appName }) {
   const [postOpen, setPostOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
+  const isProductPage = pathname.startsWith("/product/");
 
   if (isAdmin) return <main className="min-h-screen">{children}</main>;
 
@@ -267,14 +258,14 @@ export default function SiteChrome({ children, appName }) {
   return (
     <SiteChromeProvider value={chrome}>
       <Navbar />
-      <MobileHeader onMenuOpen={() => setDrawerOpen(true)} />
+      <MobileHeader onMenuOpen={() => setDrawerOpen(true)} hidden={isProductPage} />
       <MobileDrawer
         isOpen={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         onAuth={() => setAuthOpen(true)}
         onPostAd={() => setPostOpen(true)}
       />
-      <main className="min-h-screen pt-[6.875rem] pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:py-0">
+      <main className={`min-h-screen pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:py-0 ${isProductPage ? "pt-0" : "pt-[6.875rem]"}`}>
         {children}
       </main>
       <footer className="hidden border-t border-ink-100 bg-white md:block">
@@ -328,7 +319,7 @@ export default function SiteChrome({ children, appName }) {
           © {new Date().getFullYear()} {appName}. All rights reserved.
         </div>
       </footer>
-      <MobileBottomNav onAuth={() => setAuthOpen(true)} onPostAd={() => setPostOpen(true)} />
+      {!isProductPage && <MobileBottomNav onAuth={() => setAuthOpen(true)} onPostAd={() => setPostOpen(true)} />}
       <AuthModal isOpen={authOpen} onClose={closeAuth} onSuccess={completeAuth} />
       <PostAdModal isOpen={postOpen} onClose={() => setPostOpen(false)} />
     </SiteChromeProvider>
