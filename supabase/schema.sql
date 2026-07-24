@@ -91,6 +91,23 @@ create table if not exists reports (
   created_at timestamptz not null default now()
 );
 
+create table if not exists contact_inquiries (
+  id uuid primary key default gen_random_uuid(),
+  reference_code text not null unique,
+  name text not null check (char_length(name) between 2 and 100),
+  email text not null check (char_length(email) <= 254),
+  normalized_email text not null,
+  phone text,
+  category text not null check (
+    category in ('support', 'safety', 'account', 'listing', 'payment', 'partnership', 'feedback', 'other')
+  ),
+  message text not null check (char_length(message) between 10 and 2000),
+  status text not null default 'new' check (status in ('new', 'in_progress', 'resolved')),
+  admin_note text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists reviews (
   id uuid primary key default gen_random_uuid(),
   reviewer_id uuid references profiles(id) on delete cascade,
@@ -162,6 +179,117 @@ create index if not exists listings_status_idx on listings(status);
 create index if not exists user_blocks_blocker_idx on user_blocks(blocker_id);
 create index if not exists user_blocks_blocked_idx on user_blocks(blocked_id);
 create index if not exists moderation_logs_target_idx on moderation_logs(target_type, target_id);
+create index if not exists contact_inquiries_status_created_idx on contact_inquiries(status, created_at desc);
+create index if not exists contact_inquiries_email_created_idx on contact_inquiries(normalized_email, created_at desc);
+
+create or replace function submit_contact_inquiry(
+  p_reference_code text,
+  p_name text,
+  p_email text,
+  p_normalized_email text,
+  p_phone text,
+  p_category text,
+  p_message text
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  perform pg_advisory_xact_lock(hashtextextended(p_normalized_email, 0));
+
+  if exists (
+    select 1
+    from contact_inquiries
+    where normalized_email = p_normalized_email
+      and created_at >= now() - interval '60 seconds'
+  ) then
+    return false;
+  end if;
+
+  insert into contact_inquiries (
+    reference_code,
+    name,
+    email,
+    normalized_email,
+    phone,
+    category,
+    message
+  )
+  values (
+    p_reference_code,
+    p_name,
+    p_email,
+    p_normalized_email,
+    nullif(p_phone, ''),
+    p_category,
+    p_message
+  );
+
+  return true;
+end;
+$$;
+
+revoke all on function submit_contact_inquiry(text, text, text, text, text, text, text) from public;
+revoke all on function submit_contact_inquiry(text, text, text, text, text, text, text) from anon;
+revoke all on function submit_contact_inquiry(text, text, text, text, text, text, text) from authenticated;
+grant execute on function submit_contact_inquiry(text, text, text, text, text, text, text) to service_role;
+
+create or replace function canonical_uuid_array(values_to_sort uuid[])
+returns text
+language sql
+immutable
+strict
+as $$
+  select string_agg(value::text, ',' order by value::text)
+  from unnest(values_to_sort) as sorted(value);
+$$;
+
+create unique index if not exists chats_listing_participants_unique_idx
+  on chats(listing_id, canonical_uuid_array(participant_ids));
+
+-- Shared reverse-geocode cache and public Nominatim request pacing.
+create table if not exists geocode_cache (
+  coordinate_key text primary key,
+  response jsonb not null,
+  expires_at timestamptz not null,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists nominatim_rate_limit (
+  singleton boolean primary key default true check (singleton),
+  next_allowed_at timestamptz not null default now()
+);
+
+insert into nominatim_rate_limit (singleton) values (true)
+on conflict (singleton) do nothing;
+
+create or replace function acquire_nominatim_slot()
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_next timestamptz;
+  slot_at timestamptz;
+  wait_ms integer;
+begin
+  select next_allowed_at into current_next from nominatim_rate_limit where singleton = true for update;
+  slot_at := greatest(clock_timestamp(), current_next);
+  wait_ms := greatest(0, ceil(extract(epoch from (slot_at - clock_timestamp())) * 1000)::integer);
+  update nominatim_rate_limit set next_allowed_at = slot_at + interval '1 second' where singleton = true;
+  return wait_ms;
+end;
+$$;
+
+alter table geocode_cache enable row level security;
+alter table nominatim_rate_limit enable row level security;
+revoke all on geocode_cache from anon, authenticated;
+revoke all on nominatim_rate_limit from anon, authenticated;
+revoke all on function acquire_nominatim_slot() from public, anon, authenticated;
+grant execute on function acquire_nominatim_slot() to service_role;
 
 -- =========================================================
 -- Row Level Security
@@ -187,6 +315,7 @@ alter table chats enable row level security;
 alter table messages enable row level security;
 alter table favorites enable row level security;
 alter table reports enable row level security;
+alter table contact_inquiries enable row level security;
 alter table reviews enable row level security;
 alter table notifications enable row level security;
 alter table chat_reads enable row level security;

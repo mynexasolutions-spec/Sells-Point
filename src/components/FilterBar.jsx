@@ -11,7 +11,9 @@ const DATE_OPTIONS = [
 ];
 
 export default function FilterBar({
-  subcategories = [], subcategoryId, onSubcategoryChange,
+  subcategories = [],
+  subcategoryId,
+  onSubcategoryChange,
   minPrice,
   maxPrice,
   conditions,
@@ -34,30 +36,49 @@ export default function FilterBar({
     (nearby ? 1 : 0);
 
   return (
-    <div className="space-y-4">
-      {subcategories.length > 0 && <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3"><div className="flex items-center gap-2 text-sm font-semibold text-ink-700"><Tag size={16}/>Subcategory:</div><select value={subcategoryId || ""} onChange={(e)=>onSubcategoryChange(e.target.value)} className="input-field max-w-none sm:max-w-xs"><option value="">All subcategories</option>{subcategories.map((s)=><option key={s.id} value={s.id}>{s.label}</option>)}</select></div>}
+    <div className="divide-y divide-[#ededed]">
+      {subcategories.length > 0 && (
+        <div className="space-y-2 py-4">
+          <div className="flex items-center gap-2 text-sm font-bold text-[#303030]">
+            <Tag size={15} className="text-brand-600" />
+            Subcategory
+          </div>
+          <select
+            value={subcategoryId || ""}
+            onChange={(e) => onSubcategoryChange(e.target.value)}
+            className="min-h-11 w-full rounded-lg border border-[#dcdcdc] bg-white px-3 text-sm text-[#4d4d4d] outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 sm:max-w-xs"
+          >
+            <option value="">All subcategories</option>
+            {subcategories.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       {/* Price Range */}
-      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-        <div className="flex items-center gap-2 text-sm font-semibold text-ink-700">
-          <IndianRupee size={16} />
-          Price:
+      <div className="flex flex-wrap items-center gap-2 py-4 sm:gap-3">
+        <div className="flex w-full items-center gap-2 text-sm font-bold text-[#303030]">
+          <IndianRupee size={15} className="text-brand-600" />
+          Price range
         </div>
         <input
           type="number"
           placeholder="Min"
           value={minPrice || ""}
           onChange={(e) => onMinPriceChange(e.target.value ? Number(e.target.value) : null)}
-          className="input-field min-w-0 flex-1 basis-28 text-sm sm:w-28 sm:flex-none"
+          className="min-h-11 min-w-0 flex-1 basis-28 rounded-lg border border-[#dcdcdc] px-3 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 sm:w-28 sm:flex-none"
           min="0"
           max={maxPrice || undefined}
         />
-        <span className="text-ink-400">-</span>
+        <span className="text-[#999]">–</span>
         <input
           type="number"
           placeholder="Max"
           value={maxPrice || ""}
           onChange={(e) => onMaxPriceChange(e.target.value ? Number(e.target.value) : null)}
-          className="input-field min-w-0 flex-1 basis-28 text-sm sm:w-28 sm:flex-none"
+          className="min-h-11 min-w-0 flex-1 basis-28 rounded-lg border border-[#dcdcdc] px-3 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 sm:w-28 sm:flex-none"
           min={minPrice || 0}
         />
         {minPrice && maxPrice && minPrice > maxPrice && (
@@ -65,16 +86,16 @@ export default function FilterBar({
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 text-sm font-semibold text-ink-700">
-          <LocateFixed size={16} />
-          Nearby:
+      <div className="flex flex-wrap items-center gap-3 py-4">
+        <div className="flex w-full items-center gap-2 text-sm font-bold text-[#303030]">
+          <LocateFixed size={15} className="text-brand-600" />
+          Nearby
         </div>
         <button
           type="button"
           onClick={nearby ? onClearNearby : onUseNearby}
-          className={`min-h-11 rounded-xl px-3.5 py-2 text-sm font-semibold ${
-            nearby ? "bg-brand-600 text-white" : "bg-white text-ink-600 ring-1 ring-inset ring-ink-200"
+          className={`min-h-11 rounded-lg px-3.5 py-2 text-sm font-semibold ${
+            nearby ? "bg-brand-600 text-white" : "border border-[#dcdcdc] bg-white text-[#4d4d4d]"
           }`}
         >
           {nearby ? "Near me active" : "Use my location"}
@@ -83,7 +104,7 @@ export default function FilterBar({
           <select
             value={radiusKm || 25}
             onChange={(e) => onRadiusChange(Number(e.target.value))}
-            className="min-h-11 rounded-xl border border-ink-200 px-3.5 py-2 text-sm text-ink-700 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+            className="min-h-11 rounded-lg border border-[#dcdcdc] px-3.5 py-2 text-sm text-[#4d4d4d] focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
           >
             {[5, 10, 25, 50].map((km) => (
               <option key={km} value={km}>
@@ -95,10 +116,10 @@ export default function FilterBar({
       </div>
 
       {/* Condition Filter */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 text-sm font-semibold text-ink-700">
-          <Tag size={16} />
-          Condition:
+      <div className="flex flex-wrap items-center gap-3 py-4">
+        <div className="flex w-full items-center gap-2 text-sm font-bold text-[#303030]">
+          <Tag size={15} className="text-brand-600" />
+          Condition
         </div>
         <div className="flex flex-wrap gap-2">
           {CONDITIONS.map((cond) => {
@@ -107,10 +128,10 @@ export default function FilterBar({
               <button
                 key={cond}
                 onClick={() => onConditionToggle(cond)}
-                className={`min-h-11 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all ${
+                className={`min-h-10 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all ${
                   active
                     ? "bg-brand-600 text-white shadow-sm"
-                    : "bg-white text-ink-600 ring-1 ring-inset ring-ink-200 hover:ring-ink-300"
+                    : "bg-white text-[#555] ring-1 ring-inset ring-[#d7d7d7] hover:ring-brand-400"
                 }`}
               >
                 {cond}
@@ -121,15 +142,15 @@ export default function FilterBar({
       </div>
 
       {/* Date Posted Filter */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 text-sm font-semibold text-ink-700">
-          <Calendar size={16} />
-          Posted:
+      <div className="flex flex-wrap items-center gap-3 py-4">
+        <div className="flex w-full items-center gap-2 text-sm font-bold text-[#303030]">
+          <Calendar size={15} className="text-brand-600" />
+          Date posted
         </div>
         <select
           value={dateFilter || "all"}
           onChange={(e) => onDateFilterChange(e.target.value)}
-          className="min-h-11 rounded-xl border border-ink-200 px-3.5 py-2 text-sm text-ink-700 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+          className="min-h-11 rounded-lg border border-[#dcdcdc] px-3.5 py-2 text-sm text-[#4d4d4d] focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
         >
           {DATE_OPTIONS.map((opt) => (
             <option key={opt.id} value={opt.id}>
@@ -141,7 +162,7 @@ export default function FilterBar({
 
       {/* Clear Filters */}
       {activeFilterCount > 0 && (
-        <div className="flex items-center justify-between border-t border-ink-100 pt-3">
+        <div className="flex items-center justify-between py-4">
           <span className="text-xs font-medium text-ink-500">
             {activeFilterCount} filter{activeFilterCount !== 1 ? "s" : ""} active
           </span>

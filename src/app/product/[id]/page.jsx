@@ -32,8 +32,12 @@ import { supabase } from "@/lib/supabaseClient";
 import ProductCard from "@/components/ProductCard";
 import BrandLogo from "@/components/BrandLogo";
 import MockCheckoutModal from "@/components/MockCheckoutModal";
+import ListingMedia from "@/components/ListingMedia";
 
 const CHAT_CONTINUATION_KEY = "sellspoint_pending_chat_listing";
+const FAVORITE_CONTINUATION_KEY = "sellspoint_pending_favorite_listing";
+const CART_CONTINUATION_KEY = "sellspoint_pending_cart_listing";
+const BUY_CONTINUATION_KEY = "sellspoint_pending_buy_listing";
 
 function formatPrice(value) {
   return new Intl.NumberFormat("en-IN", {
@@ -63,7 +67,10 @@ export default function ProductPage({ params }) {
     currentUser,
     toggleFavorite,
     isFavorite,
+    isFavoritePending,
+    getFavoriteError,
     getOrCreateChat,
+    unreadMessageCount,
     incrementViews,
     reportContent,
   } = useApp();
@@ -77,6 +84,8 @@ export default function ProductPage({ params }) {
   const [selectedSpecifications, setSelectedSpecifications] = useState({});
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [commerceMessage, setCommerceMessage] = useState("");
+  const [commerceStatus, setCommerceStatus] = useState("idle");
+  const [cartPending, setCartPending] = useState(false);
   const [deliveryPin, setDeliveryPin] = useState("");
   const [deliveryMessage, setDeliveryMessage] = useState("");
 
@@ -97,13 +106,13 @@ export default function ProductPage({ params }) {
   const startChat = useCallback(
     async (targetListing) => {
       setChatError("");
-      if (!currentUser?.verified) {
-        setChatError("A verified account is required before starting a chat.");
+      if (!currentUser) {
+        setChatError("Please sign in to start a chat.");
         return;
       }
       const chat = await getOrCreateChat(targetListing.id, targetListing.sellerId);
       if (chat) router.push("/chat");
-      else setChatError("Unable to start this chat. Check your account verification and try again.");
+      else setChatError("Unable to start this chat right now. Please try again.");
     },
     [currentUser, getOrCreateChat, router]
   );
@@ -160,6 +169,27 @@ export default function ProductPage({ params }) {
     startChat(listing);
   }, [currentUser, listing, startChat]);
 
+  useEffect(() => {
+    if (!listing || !currentUser) return;
+    const continueFavorite = window.sessionStorage.getItem(FAVORITE_CONTINUATION_KEY) === listing.id;
+    const continueCart = window.sessionStorage.getItem(CART_CONTINUATION_KEY) === listing.id;
+    const continueBuy = window.sessionStorage.getItem(BUY_CONTINUATION_KEY) === listing.id;
+    if (continueFavorite) {
+      window.sessionStorage.removeItem(FAVORITE_CONTINUATION_KEY);
+      toggleFavorite(listing.id);
+    }
+    if (continueCart) {
+      window.sessionStorage.removeItem(CART_CONTINUATION_KEY);
+      addToCart(currentUser);
+    }
+    if (continueBuy) {
+      window.sessionStorage.removeItem(BUY_CONTINUATION_KEY);
+      setCheckoutOpen(true);
+    }
+    // Continuations are consumed once when authentication resolves.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, listing]);
+
   if (!hydrated || fetching) {
     return (
       <div className="page-container">
@@ -196,6 +226,8 @@ export default function ProductPage({ params }) {
 
   const seller = getUserById(listing.sellerId);
   const fav = isFavorite(listing.id);
+  const favoritePending = isFavoritePending(listing.id);
+  const favoriteError = getFavoriteError(listing.id);
   const isOwner = currentUser?.id === listing.sellerId;
   const images = listing.images?.length ? listing.images : [];
   const specs = listing.specifications || {};
@@ -225,11 +257,47 @@ export default function ProductPage({ params }) {
     else await navigator.clipboard?.writeText(shareData.url);
   };
 
-  const addToCart = async () => {
-    if (!currentUser) return openAuth();
-    const response = await fetch("/api/cart", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actorId: currentUser.id, listingId: listing.id, selectedSpecifications }) });
-    const json = await response.json().catch(() => ({}));
-    setCommerceMessage(response.ok ? "Added to your cart." : json.error || "Unable to add to cart.");
+  const addToCart = async (authenticatedUser = currentUser) => {
+    if (!authenticatedUser) {
+      openAuth({ onSuccess: () => window.sessionStorage.setItem(CART_CONTINUATION_KEY, listing.id) });
+      return;
+    }
+    if (cartPending) return;
+    setCartPending(true);
+    setCommerceStatus("pending");
+    setCommerceMessage("Adding to cart…");
+    try {
+      const response = await fetch("/api/cart", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actorId: authenticatedUser.id, listingId: listing.id, selectedSpecifications }) });
+      const json = await response.json().catch(() => ({}));
+      if (response.ok && json.ok) {
+        setCommerceStatus("success");
+        setCommerceMessage("Added to your cart.");
+      } else {
+        setCommerceStatus("error");
+        setCommerceMessage(json.error?.message || "Unable to add to cart. Please try again.");
+      }
+    } catch {
+      setCommerceStatus("error");
+      setCommerceMessage("Unable to reach the cart. Check your connection and try again.");
+    } finally {
+      setCartPending(false);
+    }
+  };
+
+  const handleFavorite = async () => {
+    if (!currentUser) {
+      openAuth({ onSuccess: () => window.sessionStorage.setItem(FAVORITE_CONTINUATION_KEY, listing.id) });
+      return;
+    }
+    await toggleFavorite(listing.id);
+  };
+
+  const handleBuyNow = () => {
+    if (!currentUser) {
+      openAuth({ onSuccess: () => window.sessionStorage.setItem(BUY_CONTINUATION_KEY, listing.id) });
+      return;
+    }
+    setCheckoutOpen(true);
   };
 
   const selectSpec = (key, value) => setSelectedSpecifications((prev) => ({ ...prev, [key]: value }));
@@ -243,26 +311,26 @@ export default function ProductPage({ params }) {
       <header className="flex h-14 items-center justify-between border-b border-ink-100 px-4 md:hidden">
         <button type="button" onClick={() => router.back()} className="-ml-2 rounded-full p-2" aria-label="Go back"><ArrowLeft size={21} /></button>
         <BrandLogo compact className="h-8 w-[104px] min-[390px]:w-[112px]" />
-        <div className="flex items-center gap-1"><button type="button" onClick={() => toggleFavorite(listing.id)} className="rounded-full p-2" aria-label="Save listing"><Heart size={20} fill={fav ? "currentColor" : "none"} className={fav ? "text-red-500" : ""} /></button><button type="button" onClick={shareListing} className="rounded-full p-2" aria-label="Share listing"><Share2 size={19} /></button></div>
+        <div className="flex items-center gap-1">{currentUser && <Link href="/chat" className="relative rounded-full p-2" aria-label={`Messages${unreadMessageCount ? `, ${unreadMessageCount} unread` : ""}`}><MessageCircle size={20}/>{unreadMessageCount > 0 && <span className="absolute right-0 top-0 min-w-4 rounded-full bg-red-500 px-1 text-[9px] font-bold leading-4 text-white">{unreadMessageCount > 99 ? "99+" : unreadMessageCount}</span>}</Link>}<button type="button" onClick={handleFavorite} disabled={favoritePending} className="rounded-full p-2 disabled:opacity-60" aria-label={fav ? "Remove from favorites" : "Add to favorites"} aria-pressed={fav}><Heart size={20} fill={fav ? "currentColor" : "none"} className={fav ? "text-red-500" : ""} /></button><button type="button" onClick={shareListing} className="rounded-full p-2" aria-label="Share listing"><Share2 size={19} /></button></div>
       </header>
       <div className="hidden border-b border-ink-100 px-4 py-3 text-xs text-ink-500 md:block"><Link href="/">Home</Link> <span className="mx-2">›</span><Link href={`/search?category=${encodeURIComponent(listing.category)}`}>{listing.category}</Link><span className="mx-2">›</span><span className="text-ink-700">{listing.title}</span></div>
       <div className="grid gap-0 lg:grid-cols-[minmax(0,1.08fr)_minmax(360px,.92fr)] lg:gap-10 lg:px-4 lg:pt-6">
         <div className="min-w-0">
-          <div className="flex h-[min(72vw,390px)] min-h-[280px] gap-2 bg-white px-3 py-3 sm:h-[480px] lg:h-[580px]">
+          <div className="flex items-start gap-2 bg-white px-3 py-3">
             {images.length > 1 && (
               <div className="flex w-12 shrink-0 flex-col gap-2 overflow-y-auto scrollbar-hidden sm:w-16">
                 {images.map((src, idx) => (
-                  <button key={idx} onClick={() => setImgIdx(idx)} className={`aspect-square shrink-0 overflow-hidden rounded-md border-2 bg-white p-1 ${idx === imgIdx ? "border-brand-500" : "border-ink-200"}`} aria-label={`View image ${idx + 1}`}>
-                    <img src={src} alt="" className="h-full w-full object-contain" />
+                  <button key={idx} onClick={() => setImgIdx(idx)} className={`aspect-[9/16] shrink-0 overflow-hidden rounded-md border-2 bg-white ${idx === imgIdx ? "border-brand-500" : "border-ink-200"}`} aria-label={`View image ${idx + 1}`}>
+                    <ListingMedia src={src} alt="" className="h-full w-full" />
                   </button>
                 ))}
               </div>
             )}
             <div className="relative min-w-0 flex-1 overflow-hidden rounded-lg border border-ink-200 bg-white">
               {images.length > 0 ? (
-                <img src={images[imgIdx]} alt={listing.title} className="h-full w-full p-5 object-contain object-center sm:p-8" />
+                <ListingMedia src={images[imgIdx]} alt={listing.title} loading="eager" className="w-full" expandable />
               ) : (
-                <div className="flex h-full items-center justify-center text-ink-300">No image</div>
+                <div className="flex aspect-[9/16] items-center justify-center text-ink-300">No image</div>
               )}
             {images.length > 1 && (
               <>
@@ -355,12 +423,13 @@ export default function ProductPage({ params }) {
           </div>
           {!isOwner && listing.status === "active" && (
             <div className="rounded-2xl border border-brand-100 bg-white p-4 shadow-sm sm:p-5">
-              <div className="flex items-center justify-between gap-4"><div><p className="font-display font-bold text-ink-900">Buy with confidence</p><p className="mt-1 text-sm text-ink-500">Mock EMI from {formatPrice(Math.ceil(listing.price / 6))}/month</p></div><BadgeCheck className="shrink-0 text-brand-600" /></div>
+              <div className="flex items-center justify-between gap-4"><div><p className="font-display font-bold text-ink-900">Buy with confidence</p><p className="mt-1 text-sm text-ink-500">Choose card, UPI, cash on delivery, or net banking at checkout.</p></div><BadgeCheck className="shrink-0 text-brand-600" /></div>
               {Object.entries(specs).filter(([, value]) => value !== null && value !== "").map(([key, value]) => <div key={key} className="mt-4"><p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink-500">{key.replace(/([A-Z])/g, " $1")}</p><div className="flex flex-wrap gap-2">{optionValues(value).map((option) => <button key={option} onClick={() => selectSpec(key, option)} className={`rounded-lg border px-3 py-2 text-sm font-semibold ${selectedSpecifications[key] === option ? "border-brand-600 bg-brand-50 text-brand-800" : "border-ink-200 text-ink-700"}`}>{option}{key === "warrantyMonths" ? " months" : ""}</button>)}</div></div>)}
-              <div className="mt-5 grid grid-cols-[42px_minmax(0,1fr)_minmax(0,1fr)] gap-2 sm:grid-cols-[48px_minmax(0,1fr)_minmax(0,1fr)]"><button onClick={addToCart} className="flex min-h-11 items-center justify-center rounded-xl border border-brand-200 text-brand-700 hover:bg-brand-50" aria-label="Add to cart"><ShoppingCart size={19} /></button><button onClick={() => setCheckoutOpen(true)} className="btn-secondary min-w-0 px-1.5 text-xs sm:px-2 sm:text-sm"><CreditCard size={15} /><span className="sm:hidden">EMI</span><span className="hidden sm:inline">Pay with EMI</span></button><button onClick={() => setCheckoutOpen(true)} className="btn-primary min-w-0 px-1.5 text-xs sm:px-2 sm:text-sm">Buy Now</button></div>
-              {commerceMessage && <p className="mt-3 text-sm font-medium text-brand-700">{commerceMessage}</p>}
-              <section className="mt-6 border-t border-ink-100 pt-4" aria-label="Bundle offers"><h3 className="font-display text-base font-bold text-ink-900">Save extra when you buy together</h3><p className="text-xs text-brand-700">Relevant accessories for this {listing.category} listing · mock bundle offer</p><div className="mt-3 flex snap-x gap-3 overflow-x-auto pb-2 pr-2">{bundles.map((bundle) => <div key={bundle.label} className="w-[78vw] max-w-[250px] shrink-0 snap-start rounded-xl border border-ink-200 p-3 sm:w-[225px]"><div className="flex h-20 items-center justify-center gap-2 rounded-lg bg-ink-50"><img src={images[0]} alt="" className="h-16 w-16 object-contain"/><b className="rounded-full bg-ink-900 px-1.5 text-white">+</b><span className="text-3xl">{bundle.icon}</span></div><p className="mt-2 line-clamp-2 text-xs font-semibold">{listing.title} + {bundle.label}</p><p className="mt-1 text-sm font-bold text-ink-900">{formatPrice(listing.price + bundle.price)}</p><button onClick={() => setCommerceMessage(`Mock ${bundle.label} bundle added to cart.`)} className="mt-2 w-full rounded-lg border border-ink-800 py-1.5 text-xs font-semibold">Add combo to cart</button></div>)}</div></section>
-              <section className="mt-5 border-t border-ink-100 pt-4" aria-label="Available payment methods"><h3 className="font-display text-base font-bold text-ink-900">Available Payment Methods</h3><div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-7">{[[CreditCard,"EMI"],[Smartphone,"UPI"],[CreditCard,"Credit card"],[Truck,"COD"],[CircleDollarSign,"Split pay"],[Banknote,"Debit card"],[Landmark,"Net banking"]].map(([Icon, label]) => <div key={label} className="text-center"><span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-ink-50 text-brand-700"><Icon size={18}/></span><p className="mt-1 text-[10px] font-medium text-ink-600">{label}</p></div>)}</div></section>
+              <div className="mt-5 grid grid-cols-[48px_minmax(0,1fr)] gap-2"><button onClick={() => addToCart()} disabled={cartPending} className="flex min-h-11 items-center justify-center rounded-xl border border-brand-200 text-brand-700 hover:bg-brand-50 disabled:opacity-60" aria-label={cartPending ? "Adding to cart" : "Add to cart"}><ShoppingCart size={19} /></button><button onClick={handleBuyNow} className="btn-primary w-full">Buy Now</button></div>
+              {commerceMessage && <p className={`mt-3 text-sm font-medium ${commerceStatus === "error" ? "text-red-600" : "text-brand-700"}`} role={commerceStatus === "error" ? "alert" : "status"}>{commerceMessage}</p>}
+              {favoriteError && <p className="mt-3 text-sm font-medium text-red-600" role="alert">{favoriteError}</p>}
+              <section className="mt-6 border-t border-ink-100 pt-4" aria-label="Bundle offers"><h3 className="font-display text-base font-bold text-ink-900">Save extra when you buy together</h3><p className="text-xs text-brand-700">Relevant accessories for this {listing.category} listing · mock bundle offer</p><div className="mt-3 flex snap-x gap-3 overflow-x-auto pb-2 pr-2">{bundles.map((bundle) => <div key={bundle.label} className="w-[78vw] max-w-[250px] shrink-0 snap-start rounded-xl border border-ink-200 p-3 sm:w-[225px]"><div className="flex items-center justify-center gap-2 rounded-lg bg-ink-50 p-2"><ListingMedia src={images[0]} alt="" className="w-12 rounded-md"/><b className="rounded-full bg-ink-900 px-1.5 text-white">+</b><span className="text-3xl">{bundle.icon}</span></div><p className="mt-2 line-clamp-2 text-xs font-semibold">{listing.title} + {bundle.label}</p><p className="mt-1 text-sm font-bold text-ink-900">{formatPrice(listing.price + bundle.price)}</p><button onClick={() => setCommerceMessage(`Mock ${bundle.label} bundle added to cart.`)} className="mt-2 w-full rounded-lg border border-ink-800 py-1.5 text-xs font-semibold">Add combo to cart</button></div>)}</div></section>
+              <section className="mt-5 border-t border-ink-100 pt-4" aria-label="Available payment methods"><h3 className="font-display text-base font-bold text-ink-900">Available Payment Methods</h3><div className="mt-3 grid grid-cols-4 gap-2">{[[Smartphone,"UPI"],[CreditCard,"Card"],[Truck,"COD"],[Landmark,"Net banking"]].map(([Icon, label]) => <div key={label} className="text-center"><span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-ink-50 text-brand-700"><Icon size={18}/></span><p className="mt-1 text-[10px] font-medium text-ink-600">{label}</p></div>)}</div></section>
               <section className="mt-5 rounded-xl bg-brand-50 p-3" aria-label="Check delivery"><div className="flex items-center gap-2"><Truck size={18} className="text-brand-700"/><h3 className="font-display text-sm font-bold">Check Delivery</h3></div><div className="mt-2 flex gap-2"><input value={deliveryPin} onChange={(event) => setDeliveryPin(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" placeholder="Enter PIN code" className="min-w-0 flex-1 rounded-lg border border-brand-200 bg-white px-3 py-2 text-sm outline-none"/><button onClick={checkDelivery} className="rounded-lg bg-brand-700 px-3 text-sm font-bold text-white">Check</button></div>{deliveryMessage && <p className="mt-2 text-xs font-medium text-brand-800">{deliveryMessage}</p>}</section>
             </div>
           )}
@@ -389,13 +458,15 @@ export default function ProductPage({ params }) {
                   This is your listing
                 </span>
               )}
-              {currentUser && !isOwner && (
+              {!isOwner && (
                 <button
-                  onClick={() => toggleFavorite(listing.id)}
-                  className="btn-secondary w-full"
+                  onClick={handleFavorite}
+                  disabled={favoritePending}
+                  aria-pressed={fav}
+                  className="btn-secondary w-full disabled:opacity-60"
                 >
                   <Heart size={16} fill={fav ? "currentColor" : "none"} className={fav ? "text-red-500" : ""} />
-                  {fav ? "Saved to favorites" : "Save to favorites"}
+                  {fav ? "Added to favorites" : "Add to favorites"}
                 </button>
               )}
               {chatError && (
@@ -457,7 +528,7 @@ export default function ProductPage({ params }) {
       </div>
 
       <div className="fixed inset-x-0 bottom-0 z-40 flex gap-2 border-t border-ink-200 bg-white p-3 pb-[calc(.75rem+env(safe-area-inset-bottom))] shadow-[0_-5px_20px_rgba(15,23,42,.08)] lg:hidden">
-        {!isOwner && listing.status === "active" ? <><button type="button" onClick={addToCart} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-brand-300 text-brand-700" aria-label="Add to cart"><ShoppingCart size={20} /></button><button type="button" onClick={() => setCheckoutOpen(true)} className="flex-1 rounded-md border border-brand-500 px-2 text-sm font-bold text-brand-700">EMI</button><button type="button" onClick={() => setCheckoutOpen(true)} className="flex-1 rounded-md bg-brand-600 px-2 text-sm font-bold text-white">Buy Now</button></> : <button type="button" onClick={handleChat} className="flex-1 rounded-md bg-ink-950 px-4 text-sm font-bold text-white">Chat with Seller</button>}
+        {!isOwner && listing.status === "active" ? <><button type="button" onClick={() => addToCart()} disabled={cartPending} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-brand-300 text-brand-700 disabled:opacity-60" aria-label={cartPending ? "Adding to cart" : "Add to cart"}><ShoppingCart size={20} /></button><button type="button" onClick={handleBuyNow} className="flex-1 rounded-md bg-brand-600 px-2 text-sm font-bold text-white">Buy Now</button></> : <button type="button" onClick={handleChat} className="flex-1 rounded-md bg-ink-950 px-4 text-sm font-bold text-white">Chat with Seller</button>}
       </div>
 
       <MockCheckoutModal open={checkoutOpen} onClose={() => setCheckoutOpen(false)} items={[checkoutItem]} />

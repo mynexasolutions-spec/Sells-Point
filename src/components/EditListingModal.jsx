@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { X, Upload, ChevronLeft, ChevronRight, Check, Film, ImagePlus, LocateFixed } from "lucide-react";
 import { useApp, CONDITIONS } from "@/context/AppContext";
+import ListingMedia from "@/components/ListingMedia";
+import { useListingLocation } from "@/hooks/useListingLocation";
 
 const STEPS = ["Details", "Media", "Pricing", "Review"];
 
@@ -11,9 +13,9 @@ async function uploadFile(file) {
   formData.append("file", file);
   formData.append("folder", "sells-point/products");
   const res = await fetch("/api/upload", { method: "POST", body: formData });
-  if (!res.ok) throw new Error("Upload failed");
-  const { url } = await res.json();
-  return url;
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(payload.error || "Upload failed");
+  return payload;
 }
 
 export default function EditListingModal({ isOpen, onClose, listing, adminMode = false }) {
@@ -23,6 +25,8 @@ export default function EditListingModal({ isOpen, onClose, listing, adminMode =
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [mediaByUrl, setMediaByUrl] = useState({});
+  const locationLookup = useListingLocation();
   const [form, setForm] = useState({
     title: listing?.title || "",
     category: listing?.category || "",
@@ -79,8 +83,11 @@ export default function EditListingModal({ isOpen, onClose, listing, adminMode =
     setUploading(true);
     setError("");
     try {
-      const urls = await Promise.all(files.map(uploadFile));
-      set({ images: [...form.images, ...urls] });
+      const uploads = await Promise.all(files.map(uploadFile));
+      set({ images: [...form.images, ...uploads.map((upload) => upload.url)] });
+      setMediaByUrl((current) => ({ ...current, ...Object.fromEntries(uploads.map((upload) => [upload.url, upload])) }));
+      const warning = uploads.find((upload) => upload.warning)?.warning;
+      if (warning) setError(warning);
     } catch {
       setError("Failed to upload image. Please try again.");
     } finally {
@@ -94,8 +101,8 @@ export default function EditListingModal({ isOpen, onClose, listing, adminMode =
     setUploading(true);
     setError("");
     try {
-      const url = await uploadFile(file);
-      set({ video: url });
+      const upload = await uploadFile(file);
+      set({ video: upload.url });
     } catch {
       setError("Failed to upload video. Please try again.");
     } finally {
@@ -105,24 +112,11 @@ export default function EditListingModal({ isOpen, onClose, listing, adminMode =
 
   const removeImage = (idx) => set({ images: form.images.filter((_, i) => i !== idx) });
 
-  const useCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      setError("Location is not supported in this browser.");
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        set({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          location: form.location || "Current location",
-        });
-        setError("");
-      },
-      () => setError("Unable to access your location. You can still enter it manually."),
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-  };
+  const useCurrentLocation = () => locationLookup.locate((result) => set({
+    latitude: result.latitude,
+    longitude: result.longitude,
+    location: result.displayName,
+  }));
 
   const canProceed = () => {
     if (step === 0) return form.title.trim() && form.description.trim() && form.category;
@@ -284,17 +278,19 @@ export default function EditListingModal({ isOpen, onClose, listing, adminMode =
                     <div className="flex gap-2">
                       <input
                         value={form.location}
-                        onChange={(e) => set({ location: e.target.value })}
+                        onChange={(e) => set({ location: e.target.value, latitude: null, longitude: null })}
                         placeholder="City, Country"
                         className="input-field flex-1"
                       />
-                      <button type="button" onClick={useCurrentLocation} className="btn-secondary shrink-0 px-3">
+                      <button type="button" onClick={useCurrentLocation} disabled={locationLookup.loading} className="btn-secondary shrink-0 px-3" aria-label="Use live location">
                         <LocateFixed size={16} />
                       </button>
                     </div>
-                    {form.latitude && form.longitude && (
+                    {form.latitude != null && form.longitude != null && (
                       <p className="mt-1 text-xs text-brand-600">Nearby discovery enabled for this listing.</p>
                     )}
+                    {locationLookup.message && <p className={`mt-1 text-xs ${locationLookup.kind === "error" ? "text-red-600" : "text-brand-700"}`} role={locationLookup.kind === "error" ? "alert" : "status"}>{locationLookup.message}</p>}
+                    <p className="mt-1 text-[11px] text-ink-400">Location data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="underline">OpenStreetMap contributors</a></p>
                   </div>
                 </div>
               )}
@@ -305,10 +301,13 @@ export default function EditListingModal({ isOpen, onClose, listing, adminMode =
                     <label className="mb-1.5 block text-sm font-medium text-ink-700">
                       Photos <span className="text-ink-400">(up to 6)</span>
                     </label>
+                    <p className="mb-3 rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-800">
+                      For the best result, upload photos in a 9:16 portrait ratio. Other shapes will be fitted completely inside the frame.
+                    </p>
                     <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
                       {form.images.map((src, idx) => (
-                        <div key={idx} className="group relative aspect-square overflow-hidden rounded-xl border border-ink-100">
-                          <img src={src} alt="" className="h-full w-full object-contain bg-ink-50" />
+                        <div key={idx} className="group relative">
+                          <ListingMedia src={src} metadata={mediaByUrl[src]} alt={`Listing photo ${idx + 1}`} className="rounded-xl border border-ink-100" />
                           <button
                             onClick={() => removeImage(idx)}
                             className="absolute right-1 top-1 rounded-full bg-ink-950/70 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100"
@@ -318,12 +317,12 @@ export default function EditListingModal({ isOpen, onClose, listing, adminMode =
                         </div>
                       ))}
                       {form.images.length < 6 && (
-                        <label className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-ink-200 text-ink-400 hover:border-brand-400 hover:text-brand-500">
+                        <label className="flex aspect-[9/16] cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-ink-200 text-ink-400 hover:border-brand-400 hover:text-brand-500">
                           <ImagePlus size={20} />
                           <span className="text-[11px]">{uploading ? "Uploading..." : "Add photo"}</span>
                           <input
                             type="file"
-                            accept="image/*"
+                            accept="image/jpeg,image/png,image/webp,image/avif"
                             multiple
                             className="hidden"
                             disabled={uploading}
@@ -404,7 +403,7 @@ export default function EditListingModal({ isOpen, onClose, listing, adminMode =
                 <div className="space-y-4">
                   <div className="overflow-hidden rounded-2xl border border-ink-100">
                     {form.images[0] && (
-                      <img src={form.images[0]} alt="" className="h-44 w-full object-contain bg-ink-50" />
+                      <ListingMedia src={form.images[0]} metadata={mediaByUrl[form.images[0]]} alt={form.title} className="mx-auto w-full max-w-[16rem]" expandable />
                     )}
                     <div className="p-4">
                       <h4 className="font-display font-bold text-ink-900">{form.title}</h4>

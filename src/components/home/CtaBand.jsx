@@ -11,11 +11,11 @@ export default function CtaBand() {
     <section className="bg-ink-50 pb-4 sm:pb-6">
       <div className="home-container">
         <div className="cta-gradient grid overflow-hidden rounded-3xl px-6 py-8 sm:px-10 sm:py-9 lg:grid-cols-[170px_minmax(0,1fr)_auto] lg:items-center lg:gap-10">
-          <div className="order-2 mx-auto mt-4 w-28 self-end sm:mt-0 sm:w-36 lg:order-1 lg:mx-0 lg:w-full">
+          <div className="order-2 mx-auto mt-5 w-36 self-end sm:mt-0 sm:w-44 lg:order-1 lg:mx-0 lg:w-full">
             <img
               src="/assets/home/cta-armchair.webp"
               alt="Green armchair and lamp"
-              className="max-h-36 w-full object-contain object-bottom"
+              className="max-h-44 w-full object-contain object-bottom"
             />
           </div>
           <div className="order-1 text-white lg:order-2">

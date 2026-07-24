@@ -94,6 +94,7 @@ function mapListing(row) {
 function mapMessage(row) {
   return {
     id: row.id,
+    chatId: row.chat_id,
     senderId: row.sender_id,
     text: row.text || "",
     image: row.image_url,
@@ -215,6 +216,10 @@ export function AppProvider({ children }) {
   const [reports, setReports] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [favoriteIds, setFavoriteIds] = useState(new Set());
+  const [favoritePendingIds, setFavoritePendingIds] = useState(new Set());
+  const [favoriteErrors, setFavoriteErrors] = useState({});
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState("");
   const [currentUser, setCurrentUser] = useState(null);
   const [pendingOtp, setPendingOtp] = useState(null);
   const [hydrated, setHydrated] = useState(false);
@@ -406,25 +411,40 @@ export function AppProvider({ children }) {
   }, []);
 
   const fetchUserChats = useCallback(async (userId) => {
-    const { data: chatRows } = await supabase
+    setChatLoading(true);
+    setChatError("");
+    const { data: chatRows, error: chatRowsError } = await supabase
       .from("chats")
       .select("*")
       .contains("participant_ids", [userId]);
+    if (chatRowsError) {
+      setChatError("We couldn't load your conversations. Check your connection and try again.");
+      setChatLoading(false);
+      return false;
+    }
     if (!chatRows || chatRows.length === 0) {
       setChats([]);
-      return;
+      setChatLoading(false);
+      return true;
     }
     const chatIds = chatRows.map((c) => c.id);
-    const { data: msgRows } = await supabase
+    const { data: msgRows, error: messagesError } = await supabase
       .from("messages")
       .select("*")
       .in("chat_id", chatIds)
       .order("created_at", { ascending: true });
+    if (messagesError) {
+      setChatError("We couldn't load your messages. Check your connection and try again.");
+      setChatLoading(false);
+      return false;
+    }
     setChats(
       chatRows.map((c) =>
         mapChat(c, (msgRows || []).filter((m) => m.chat_id === c.id).map(mapMessage))
       )
     );
+    setChatLoading(false);
+    return true;
   }, []);
 
   const fetchFavorites = useCallback(async (userId) => {
@@ -620,6 +640,16 @@ export function AppProvider({ children }) {
     return mapped;
   }, []);
 
+  const refreshListings = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("listings")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) return false;
+    setListings((data || []).map(mapListing));
+    return true;
+  }, []);
+
   const refreshUserRating = useCallback(async (userId, reviews = null) => {
     const sourceReviews = reviews || (await fetchReviewsForUser(userId));
     const ratingCount = sourceReviews.length;
@@ -748,6 +778,8 @@ export function AppProvider({ children }) {
     } else {
       setChats([]);
       setFavoriteIds(new Set());
+      setChatError("");
+      setChatLoading(false);
     }
   }, [currentUser, fetchUserChats, fetchFavorites]);
 
@@ -801,6 +833,28 @@ export function AppProvider({ children }) {
   }, [currentUser, fetchAnnouncements]);
 
   useEffect(() => {
+    if (!currentUser) return;
+    const channel = supabase
+      .channel(`chat-updates-${currentUser.id}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chats" }, (payload) => {
+        if (!payload.new.participant_ids?.includes(currentUser.id)) return;
+        const mapped = mapChat(payload.new, []);
+        setChats((prev) => (prev.some((chat) => chat.id === mapped.id) ? prev : [...prev, mapped]));
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
+        if (!chatsRef.current.some((chat) => chat.id === payload.new.chat_id)) return;
+        const mapped = mapMessage(payload.new);
+        setChats((prev) => prev.map((chat) => chat.id === mapped.chatId
+          ? { ...chat, messages: chat.messages.some((message) => message.id === mapped.id) ? chat.messages : [...chat.messages, mapped] }
+          : chat));
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUser]);
+
+  useEffect(() => {
     if (!currentUser) {
       setBlockedUsersState([]);
       setBlockRows([]);
@@ -830,15 +884,16 @@ export function AppProvider({ children }) {
 
   const verifyOtp = useCallback(async (phone, code, name) => {
     if (!pendingOtp || pendingOtp.phone !== phone || pendingOtp.code !== code) return { success: false, message: "Invalid OTP. Try 123456." };
-    const { data: existing } = await supabase.from("profiles").select("*").eq("phone", phone).maybeSingle();
+    const { data: existing, error: lookupError } = await supabase.from("profiles").select("*").eq("phone", phone).maybeSingle();
+    if (lookupError) return { success: false, message: "Unable to sign in right now. Please try again." };
     let profileRow = existing;
     if (!profileRow) {
       const { data: inserted, error } = await supabase.from("profiles").insert({ phone, name: name || "New User", avatar_url: `https://i.pravatar.cc/150?u=${encodeURIComponent(phone)}`, location: "India", verified: true }).select().single();
-      if (error) return { success: false, message: error.message };
+      if (error) return { success: false, message: "Unable to create your account right now. Please try again." };
       profileRow = inserted;
     } else if (!profileRow.verified) {
       const { data: updated, error } = await supabase.from("profiles").update({ verified: true }).eq("id", profileRow.id).select().single();
-      if (error) return { success: false, message: error.message };
+      if (error) return { success: false, message: "Unable to sign in right now. Please try again." };
       profileRow = updated;
     }
     if (profileRow.is_banned) return { success: false, message: "This account has been banned by admin." };
@@ -884,18 +939,26 @@ export function AppProvider({ children }) {
   // ----- Listings -----
   const addListing = useCallback(
     async (data) => {
-      if (!currentUser) return null;
-      if (!currentUser.verified) return null;
+      if (!currentUser) return { success: false, error: "Please sign in to publish.", code: "AUTH_REQUIRED" };
+      if (currentUser.isBanned) return { success: false, error: "This account has been suspended.", code: "ACCOUNT_BANNED" };
       const res = await fetch("/api/listings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ actorId: currentUser.id, action: "create", listing: data }),
       });
-      if (!res.ok) return null;
-      const json = await res.json();
-      const mapped = mapListing(json.listing);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) {
+        return {
+          success: false,
+          error: json.error?.message || "Unable to publish your listing. Please try again.",
+          code: json.error?.code || "SERVER_ERROR",
+          fieldErrors: json.error?.fieldErrors || {},
+          retryable: json.error?.retryable ?? true,
+        };
+      }
+      const mapped = mapListing(json.data.listing);
       setListings((prev) => [mapped, ...prev]);
-      return mapped;
+      return { success: true, listing: mapped };
     },
     [currentUser]
   );
@@ -921,10 +984,10 @@ export function AppProvider({ children }) {
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
-        return { success: false, error: json.error || "Unable to update listing" };
+        return { success: false, error: json.error?.message || "Unable to update listing" };
       }
       const json = await res.json();
-      const mapped = mapListing(json.listing);
+      const mapped = mapListing(json.data.listing);
       setListings((prev) => prev.map((l) => (l.id === id ? mapped : l)));
       return { success: true };
     },
@@ -951,10 +1014,10 @@ export function AppProvider({ children }) {
     });
     if (!res.ok) {
       const json = await res.json().catch(() => ({}));
-      return { success: false, error: json.error || "Unable to renew listing" };
+      return { success: false, error: json.error?.message || "Unable to renew listing" };
     }
     const json = await res.json();
-    const mapped = mapListing(json.listing);
+    const mapped = mapListing(json.data.listing);
     setListings((prev) => prev.map((l) => (l.id === id ? mapped : l)));
     return { success: true };
   }, [currentUser]);
@@ -1010,28 +1073,54 @@ export function AppProvider({ children }) {
   // ----- Favorites -----
   const toggleFavorite = useCallback(
     async (listingId) => {
-      if (!currentUser) return;
+      if (!currentUser) return { success: false, code: "AUTH_REQUIRED", error: "Please sign in to add favorites." };
+      if (currentUser.isBanned) return { success: false, code: "ACCOUNT_BANNED", error: "This account has been suspended." };
+      if (favoritePendingIds.has(listingId)) return { success: false, code: "CONFLICT", error: "This save is already in progress." };
       const exists = favoriteIds.has(listingId);
-      if (exists) {
-        await supabase
+      setFavoritePendingIds((prev) => new Set(prev).add(listingId));
+      setFavoriteErrors((prev) => ({ ...prev, [listingId]: "" }));
+      setFavoriteIds((prev) => {
+        const next = new Set(prev);
+        exists ? next.delete(listingId) : next.add(listingId);
+        return next;
+      });
+      const { error } = exists
+        ? await supabase
           .from("favorites")
           .delete()
           .eq("user_id", currentUser.id)
-          .eq("listing_id", listingId);
+          .eq("listing_id", listingId)
+        : await supabase
+          .from("favorites")
+          .upsert({ user_id: currentUser.id, listing_id: listingId }, { onConflict: "user_id,listing_id", ignoreDuplicates: true });
+      if (error) {
         setFavoriteIds((prev) => {
+          const next = new Set(prev);
+          exists ? next.add(listingId) : next.delete(listingId);
+          return next;
+        });
+        const message = "Couldn't update this favorite. Please try again.";
+        setFavoriteErrors((prev) => ({ ...prev, [listingId]: message }));
+        setFavoritePendingIds((prev) => {
           const next = new Set(prev);
           next.delete(listingId);
           return next;
         });
-      } else {
-        await supabase.from("favorites").insert({ user_id: currentUser.id, listing_id: listingId });
-        setFavoriteIds((prev) => new Set(prev).add(listingId));
+        return { success: false, code: "SERVER_ERROR", error: message };
       }
+      setFavoritePendingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(listingId);
+        return next;
+      });
+      return { success: true, selected: !exists };
     },
-    [currentUser, favoriteIds]
+    [currentUser, favoriteIds, favoritePendingIds]
   );
 
   const isFavorite = useCallback((listingId) => favoriteIds.has(listingId), [favoriteIds]);
+  const isFavoritePending = useCallback((listingId) => favoritePendingIds.has(listingId), [favoritePendingIds]);
+  const getFavoriteError = useCallback((listingId) => favoriteErrors[listingId] || "", [favoriteErrors]);
 
   const favoriteListings = useMemo(
     () => listings.filter((l) => favoriteIds.has(l.id)),
@@ -1042,7 +1131,7 @@ export function AppProvider({ children }) {
   const getOrCreateChat = useCallback(
     async (listingId, otherUserId) => {
       if (!currentUser) return null;
-      if (!currentUser.verified) return null;
+      if (currentUser.isBanned || currentUser.id === otherUserId) return null;
       const existingLocal = chats.find(
         (c) =>
           c.listingId === listingId &&
@@ -1056,6 +1145,7 @@ export function AppProvider({ children }) {
         .select("*")
         .eq("listing_id", listingId)
         .contains("participant_ids", [currentUser.id, otherUserId])
+        .limit(1)
         .maybeSingle();
 
       if (existingRow) {
@@ -1069,7 +1159,19 @@ export function AppProvider({ children }) {
         .insert({ listing_id: listingId, participant_ids: [currentUser.id, otherUserId] })
         .select()
         .single();
-      if (error) return null;
+      if (error) {
+        const { data: racedRow } = await supabase
+          .from("chats")
+          .select("*")
+          .eq("listing_id", listingId)
+          .contains("participant_ids", [currentUser.id, otherUserId])
+          .limit(1)
+          .maybeSingle();
+        if (!racedRow) return null;
+        const racedChat = mapChat(racedRow, []);
+        setChats((prev) => (prev.some((chat) => chat.id === racedChat.id) ? prev : [...prev, racedChat]));
+        return racedChat;
+      }
       const mapped = mapChat(inserted, []);
       setChats((prev) => [...prev, mapped]);
       return mapped;
@@ -1334,6 +1436,7 @@ export function AppProvider({ children }) {
     userResolved,
     users,
     listings,
+    refreshListings,
     categories,
     subcategories,
     chats,
@@ -1361,10 +1464,15 @@ export function AppProvider({ children }) {
     toggleFavorite,
     isFavorite,
     favoriteListings,
+    isFavoritePending,
+    getFavoriteError,
     getOrCreateChat,
     sendMessage,
     appendIncomingMessage,
     userChats,
+    chatLoading,
+    chatError,
+    retryUserChats: () => currentUser ? fetchUserChats(currentUser.id) : Promise.resolve(false),
     unreadMessageCount,
     markChatAsRead,
     getUnreadCount,

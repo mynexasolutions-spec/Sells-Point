@@ -209,7 +209,7 @@ export default function Navbar() {
             <Link
               href="/dashboard?tab=saved"
               className="flex h-11 w-11 items-center justify-center rounded-full text-ink-600 hover:bg-ink-50 hover:text-brand-700"
-              aria-label="Saved favourites"
+              aria-label="Favorites"
             >
               <Heart size={20} />
             </Link>

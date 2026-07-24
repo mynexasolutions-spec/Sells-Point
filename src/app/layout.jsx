@@ -22,6 +22,9 @@ export const metadata = {
   metadataBase: new URL(appUrl),
   title: `${appName} — Buy & Sell with Trust`,
   description: "A premium online marketplace to buy and sell mobiles, laptops, vehicles, furniture and more with built-in chat and verified sellers.",
+  icons: {
+    icon: "/assets/brand/sellspoint-logo.png",
+  },
 };
 
 export default function RootLayout({ children }) {

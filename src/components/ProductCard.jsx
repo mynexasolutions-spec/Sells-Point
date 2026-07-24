@@ -1,10 +1,11 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
+import { useEffect } from "react";
 import { Heart, MapPin, PlayCircle, Sparkles, Star } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { useSiteChrome } from "@/context/SiteChromeContext";
+import ListingMedia from "@/components/ListingMedia";
 
 const formatPrice = (value) => new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -25,10 +26,18 @@ const relativeTime = (timestamp) => {
   return `${months}mo ago`;
 };
 
-export default function ProductCard({ listing, sizes = "(max-width: 640px) 50vw, (max-width: 1024px) 50vw, 340px" }) {
-  const { toggleFavorite, isFavorite, currentUser } = useApp();
+export default function ProductCard({ listing }) {
+  const { toggleFavorite, isFavorite, isFavoritePending, getFavoriteError, currentUser } = useApp();
   const { openAuth } = useSiteChrome();
   const fav = isFavorite(listing.id);
+  const favoritePending = isFavoritePending(listing.id);
+  const favoriteError = getFavoriteError(listing.id);
+
+  useEffect(() => {
+    if (!currentUser || window.sessionStorage.getItem("sellspoint_pending_favorite_listing") !== listing.id) return;
+    window.sessionStorage.removeItem("sellspoint_pending_favorite_listing");
+    toggleFavorite(listing.id);
+  }, [currentUser, listing.id, toggleFavorite]);
   const discount = listing.originalPrice > listing.price
     ? Math.round(((listing.originalPrice - listing.price) / listing.originalPrice) * 100)
     : 0;
@@ -48,22 +57,21 @@ export default function ProductCard({ listing, sizes = "(max-width: 640px) 50vw,
 
   return (
     <article className={`group relative overflow-hidden rounded-xl border border-ink-100 bg-white ${featured ? "ring-1 ring-amber-200" : ""}`}>
-      <Link href={`/product/${listing.id}`} className="block" aria-label={`View ${listing.title}`}>
-        <div className="relative aspect-[4/3] w-full overflow-hidden bg-ink-100">
-          {listing.images?.[0] ? (
-            <Image
-              src={listing.images[0]}
-              alt={listing.title}
-              fill
-              sizes={sizes}
-              className="object-contain bg-ink-50"
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center text-sm text-ink-400">No image</div>
-          )}
-          {listing.video && <span className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-ink-950/70 px-2 py-1 text-xs text-white"><PlayCircle size={13} /> Video</span>}
-          {listing.status === "sold" && <div className="absolute inset-0 flex items-center justify-center bg-ink-950/55"><span className="rounded-full bg-white px-4 py-1.5 text-sm font-bold uppercase">Sold Out</span></div>}
-        </div>
+      <div className="relative aspect-[9/16] w-full overflow-hidden bg-white">
+        {listing.images?.[0] ? (
+          <ListingMedia
+            src={listing.images[0]}
+            alt={listing.title}
+            className="h-full w-full"
+            expandable
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center text-sm text-ink-400">No image</div>
+        )}
+        {listing.video && <span className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-ink-950/70 px-2 py-1 text-xs text-white"><PlayCircle size={13} /> Video</span>}
+        {listing.status === "sold" && <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-ink-950/55"><span className="rounded-full bg-white px-4 py-1.5 text-sm font-bold uppercase">Sold Out</span></div>}
+      </div>
+      <Link href={`/product/${listing.id}`} className="block" aria-label={`View details for ${listing.title}`}>
         <div className="p-3 sm:p-4">
           <p className={`text-xs font-semibold ${offAmount > 0 ? "text-brand-600" : "invisible"}`} aria-hidden={offAmount > 0 ? undefined : "true"}>
             {offAmount > 0 ? `${formatPrice(offAmount)} OFF` : " "}
@@ -92,13 +100,15 @@ export default function ProductCard({ listing, sizes = "(max-width: 640px) 50vw,
       </Link>
       <button
         type="button"
-        onClick={() => currentUser ? toggleFavorite(listing.id) : openAuth()}
-        className={`absolute right-2 top-2 z-10 flex h-11 w-11 items-center justify-center rounded-full shadow-sm transition-colors ${fav ? "bg-red-500 text-white" : "bg-white text-ink-600 hover:text-red-500"}`}
+        onClick={() => currentUser ? toggleFavorite(listing.id) : openAuth({ onSuccess: () => window.sessionStorage.setItem("sellspoint_pending_favorite_listing", listing.id) })}
+        disabled={favoritePending}
+        className={`absolute right-2 top-2 z-10 flex h-11 w-11 items-center justify-center rounded-full shadow-sm transition-colors disabled:opacity-60 ${fav ? "bg-red-500 text-white" : "bg-white text-ink-600 hover:text-red-500"}`}
         aria-label={fav ? `Remove ${listing.title} from favourites` : `Save ${listing.title} to favourites`}
         aria-pressed={fav}
       >
         <Heart size={16} fill={fav ? "currentColor" : "none"} />
       </button>
+      {favoriteError && <p role="alert" className="absolute right-2 top-14 z-10 max-w-[calc(100%-1rem)] rounded-lg bg-red-50 px-2 py-1 text-[10px] font-medium text-red-700 shadow">{favoriteError}</p>}
     </article>
   );
 }

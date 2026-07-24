@@ -7,6 +7,9 @@ import {
   CircleUserRound,
   ChevronRight,
   CircleHelp,
+  Bell,
+  Info,
+  Mail,
   House,
   LogIn,
   LogOut,
@@ -17,19 +20,24 @@ import {
   Settings,
   Store,
   Search,
-  ShieldCheck,
   X,
 } from "lucide-react";
 import AuthModal from "@/components/AuthModal";
 import BrandLogo from "@/components/BrandLogo";
 import Navbar from "@/components/Navbar";
 import PostAdModal from "@/components/PostAdModal";
+import SiteFooter from "@/components/SiteFooter";
+import NotificationPanel from "@/components/NotificationPanel";
 import { useApp } from "@/context/AppContext";
 import { SiteChromeProvider } from "@/context/SiteChromeContext";
+import { SUPPORT_EMAIL } from "@/lib/siteConfig";
 
 function MobileHeader({ onMenuOpen, hidden = false }) {
   const router = useRouter();
+  const { currentUser, notifications } = useApp();
   const [query, setQuery] = useState("");
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const unreadNotifications = notifications.filter((notification) => !notification.read).length;
 
   const handleSearch = (event) => {
     event.preventDefault();
@@ -43,16 +51,31 @@ function MobileHeader({ onMenuOpen, hidden = false }) {
         <Link href="/" aria-label="SellsPoint home">
           <BrandLogo compact className="h-9 w-[112px] min-[390px]:w-[128px]" />
         </Link>
-        <button
-          type="button"
-          onClick={onMenuOpen}
-          className="flex h-10 w-10 items-center justify-center rounded-full text-ink-700 hover:bg-ink-50"
-          aria-label="Open menu"
-          aria-expanded="false"
-        >
-          <Menu size={22} />
-        </button>
+        <div className="flex items-center gap-1">
+          {currentUser && (
+            <button
+              type="button"
+              onClick={() => setNotificationsOpen((open) => !open)}
+              className="relative flex h-10 w-10 items-center justify-center rounded-full text-ink-700 hover:bg-ink-50"
+              aria-label={`Notifications${unreadNotifications ? `, ${unreadNotifications} unread` : ""}`}
+              aria-expanded={notificationsOpen}
+            >
+              <Bell size={20} />
+              {unreadNotifications > 0 && <span className="absolute right-0.5 top-0.5 min-w-4 rounded-full bg-red-500 px-1 text-[9px] font-bold leading-4 text-white">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => { setNotificationsOpen(false); onMenuOpen(); }}
+            className="flex h-10 w-10 items-center justify-center rounded-full text-ink-700 hover:bg-ink-50"
+            aria-label="Open menu"
+            aria-expanded="false"
+          >
+            <Menu size={22} />
+          </button>
+        </div>
       </div>
+      {notificationsOpen && <div className="fixed right-3 top-14 z-50 max-w-[calc(100vw-1.5rem)]"><NotificationPanel /></div>}
       <form onSubmit={handleSearch} className="border-t border-ink-100 px-4 py-2">
         <label className="sr-only" htmlFor="mobile-global-search">
           Search listings
@@ -64,7 +87,7 @@ function MobileHeader({ onMenuOpen, hidden = false }) {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search mobiles, cars, furniture..."
-            className="min-w-0 flex-1 bg-transparent px-2 text-sm text-ink-900 outline-none placeholder:text-ink-400"
+            className="search-input-inner min-w-0 flex-1 bg-transparent px-2 text-sm text-ink-900 placeholder:text-ink-400"
           />
           <button type="submit" className="text-sm font-semibold text-brand-700" aria-label="Submit search">
             Search
@@ -124,7 +147,7 @@ function MobileDrawer({ isOpen, onClose, onAuth, onPostAd }) {
             </div>
           ) : (
             <div className="rounded-lg bg-ink-950 p-4 text-white">
-              <p className="text-sm text-ink-600">Sign in to post ads, save listings, and chat with sellers.</p>
+              <p className="text-sm text-ink-600">Sign in to post ads, add favorites, and chat with sellers.</p>
               <button
                 type="button"
                 onClick={closeThen(onAuth)}
@@ -148,7 +171,7 @@ function MobileDrawer({ isOpen, onClose, onAuth, onPostAd }) {
           <div className="mt-4 grid grid-cols-3 gap-2">
             <Link href="/dashboard" onClick={onClose} className="rounded-lg border border-ink-100 p-3 text-center text-xs font-medium"><Store className="mx-auto mb-1 text-brand-600" size={21} />My listings</Link>
             <Link href="/chat" onClick={onClose} className="rounded-lg border border-ink-100 p-3 text-center text-xs font-medium"><MessageCircle className="mx-auto mb-1 text-brand-600" size={21} />Messages</Link>
-            <a href={`mailto:${process.env.NEXT_PUBLIC_SUPPORT_EMAIL || "support@sellspoint.app"}`} className="rounded-lg border border-ink-100 p-3 text-center text-xs font-medium"><CircleHelp className="mx-auto mb-1 text-brand-600" size={21} />Help</a>
+            <a href={`mailto:${SUPPORT_EMAIL}`} className="rounded-lg border border-ink-100 p-3 text-center text-xs font-medium"><CircleHelp className="mx-auto mb-1 text-brand-600" size={21} />Help</a>
           </div>
 
           <nav aria-label="Mobile drawer links" className="mt-5 border-y border-ink-100">
@@ -156,6 +179,8 @@ function MobileDrawer({ isOpen, onClose, onAuth, onPostAd }) {
               ["Browse listings", "/search", Search],
               ["My dashboard", "/dashboard", Store],
               ["Messages", "/chat", MessageCircle],
+              ["About us", "/about", Info],
+              ["Contact us", "/contact", Mail],
               ["Account settings", "/dashboard", Settings],
             ].map(([label, href, Icon]) => <Link key={label} href={href} onClick={onClose} className="flex items-center gap-3 border-b border-ink-100 py-3 text-sm text-ink-700 last:border-0"><Icon size={18} className="text-brand-600" /><span className="flex-1">{label}</span><ChevronRight size={16} className="text-ink-400" /></Link>)}
           </nav>
@@ -179,7 +204,7 @@ function MobileDrawer({ isOpen, onClose, onAuth, onPostAd }) {
 
 function MobileBottomNav({ onAuth, onPostAd }) {
   const pathname = usePathname();
-  const { currentUser } = useApp();
+  const { currentUser, unreadMessageCount } = useApp();
 
   const actionClass = (active) =>
     `relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-semibold transition-colors ${active ? "text-brand-600 after:absolute after:bottom-1.5 after:h-0.5 after:w-5 after:rounded-full after:bg-brand-500" : "text-ink-500 hover:text-ink-700"}`;
@@ -207,7 +232,7 @@ function MobileBottomNav({ onAuth, onPostAd }) {
         <span className={actionLabelClass(false)}>Sell</span>
       </button>
       <Link href="/chat" className={actionClass(pathname.startsWith("/chat"))} aria-current={pathname.startsWith("/chat") ? "page" : undefined}>
-        <MessageCircle size={20} />
+        <span className="relative"><MessageCircle size={20} />{unreadMessageCount > 0 && <span className="absolute -right-2 -top-2 min-w-4 rounded-full bg-red-500 px-1 text-[9px] font-bold leading-4 text-white">{unreadMessageCount > 99 ? "99+" : unreadMessageCount}</span>}</span>
         <span className={actionLabelClass(pathname.startsWith("/chat"))}>Chat</span>
       </Link>
       {currentUser ? (
@@ -268,57 +293,7 @@ export default function SiteChrome({ children, appName }) {
       <main className={`min-h-screen pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:py-0 ${isProductPage ? "pt-0" : "pt-[6.875rem]"}`}>
         {children}
       </main>
-      <footer className="hidden border-t border-ink-100 bg-white md:block">
-        <div className="home-container grid gap-10 py-16 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <BrandLogo />
-            <p className="mt-4 max-w-sm text-base leading-relaxed text-ink-500">
-              A premium marketplace to buy and sell mobiles, vehicles, furniture and more—with verified sellers and
-              built-in chat.
-            </p>
-          </div>
-          <div>
-            <h4 className="font-display text-lg font-bold text-ink-900">Explore</h4>
-            <ul className="mt-4 space-y-3 text-base text-ink-500">
-              <li>
-                <Link href="/search" className="hover:text-brand-600">
-                  Browse listings
-                </Link>
-              </li>
-              <li>
-                <Link href="/dashboard" className="hover:text-brand-600">
-                  My dashboard
-                </Link>
-              </li>
-              <li>
-                <Link href="/chat" className="hover:text-brand-600">
-                  Messages
-                </Link>
-              </li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="font-display text-lg font-bold text-ink-900">Trust &amp; Safety</h4>
-            <ul className="mt-4 space-y-3 text-base text-ink-500">
-              <li className="flex items-center gap-2">
-                <ShieldCheck size={18} className="text-brand-600" /> Verified sellers
-              </li>
-              <li className="flex items-center gap-2">
-                <MessageCircle size={18} className="text-brand-600" /> Chat before you buy
-              </li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="font-display text-lg font-bold text-ink-900">Contact</h4>
-            <p className="mt-4 text-base text-ink-500">
-              {process.env.NEXT_PUBLIC_SUPPORT_EMAIL || "support@sellspoint.app"}
-            </p>
-          </div>
-        </div>
-        <div className="border-t border-ink-100 py-6 text-center text-base text-ink-400">
-          © {new Date().getFullYear()} {appName}. All rights reserved.
-        </div>
-      </footer>
+      <SiteFooter appName={appName} hasProductBar={isProductPage} />
       {!isProductPage && <MobileBottomNav onAuth={() => setAuthOpen(true)} onPostAd={() => setPostOpen(true)} />}
       <AuthModal isOpen={authOpen} onClose={closeAuth} onSuccess={completeAuth} />
       <PostAdModal isOpen={postOpen} onClose={() => setPostOpen(false)} />

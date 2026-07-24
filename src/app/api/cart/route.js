@@ -1,54 +1,89 @@
-import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-
-async function actor(id) {
-  if (!id) return null;
-  const { data } = await supabaseAdmin.from("profiles").select("id, verified, is_banned").eq("id", id).maybeSingle();
-  return data?.verified && !data.is_banned ? data : null;
-}
+import { apiFailure, apiSuccess, resolveActor } from "@/lib/apiResponse";
 
 async function cartFor(buyerId) {
-  let { data } = await supabaseAdmin.from("carts").select("*").eq("buyer_id", buyerId).maybeSingle();
-  if (!data) ({ data } = await supabaseAdmin.from("carts").insert({ buyer_id: buyerId }).select().single());
-  return data;
+  const { data: existing, error: readError } = await supabaseAdmin.from("carts").select("*").eq("buyer_id", buyerId).maybeSingle();
+  if (readError) return { error: true };
+  if (existing) return { cart: existing };
+  const { data, error } = await supabaseAdmin.from("carts").insert({ buyer_id: buyerId }).select().single();
+  return error ? { error: true } : { cart: data };
 }
 
 export async function GET(request) {
   const buyerId = new URL(request.url).searchParams.get("buyerId");
-  if (!(await actor(buyerId))) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
-  const cart = await cartFor(buyerId);
-  const { data, error } = await supabaseAdmin.from("cart_items").select("*, listings(*)").eq("cart_id", cart.id).order("created_at");
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ items: data || [] });
+  const auth = await resolveActor(supabaseAdmin, buyerId);
+  if (auth.response) return auth.response;
+  const result = await cartFor(buyerId);
+  if (result.error) return apiFailure("SERVER_ERROR");
+  const { data, error } = await supabaseAdmin.from("cart_items").select("*, listings(*)").eq("cart_id", result.cart.id).order("created_at");
+  if (error) return apiFailure("SERVER_ERROR");
+  return apiSuccess({ items: data || [] });
 }
 
 export async function POST(request) {
-  const { actorId, listingId, selectedSpecifications = {}, quantity = 1 } = await request.json();
-  const user = await actor(actorId);
-  if (!user) return NextResponse.json({ error: "Please sign in with a verified account." }, { status: 403 });
-  const { data: listing } = await supabaseAdmin.from("listings").select("id, seller_id, status, expires_at").eq("id", listingId).maybeSingle();
-  if (!listing || listing.seller_id === user.id || listing.status !== "active" || new Date(listing.expires_at) <= new Date()) return NextResponse.json({ error: "This item is unavailable." }, { status: 400 });
-  const cart = await cartFor(user.id);
-  const { data, error } = await supabaseAdmin.from("cart_items").upsert({ cart_id: cart.id, listing_id: listingId, selected_specifications: selectedSpecifications, quantity: Math.max(1, Number(quantity) || 1), updated_at: new Date().toISOString() }, { onConflict: "cart_id,listing_id" }).select().single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ item: data });
+  const body = await request.json().catch(() => null);
+  if (!body) return apiFailure("VALIDATION_ERROR", { message: "The cart request is invalid." });
+  const auth = await resolveActor(supabaseAdmin, body.actorId);
+  if (auth.response) return auth.response;
+  if (!body.listingId) return apiFailure("VALIDATION_ERROR", { fieldErrors: { listingId: "Choose a listing." } });
+
+  const { data: listing, error: listingError } = await supabaseAdmin
+    .from("listings")
+    .select("id, seller_id, status, expires_at")
+    .eq("id", body.listingId)
+    .maybeSingle();
+  if (listingError) return apiFailure("SERVER_ERROR");
+  if (!listing) return apiFailure("NOT_FOUND", { message: "This listing no longer exists." });
+  const unavailable = listing.seller_id === auth.actor.id || listing.status !== "active" ||
+    (listing.expires_at && new Date(listing.expires_at) <= new Date());
+  if (unavailable) return apiFailure("CONFLICT", { message: "This item is currently unavailable." });
+
+  const cartResult = await cartFor(auth.actor.id);
+  if (cartResult.error) return apiFailure("SERVER_ERROR");
+  const quantity = Math.max(1, Math.min(99, Number(body.quantity) || 1));
+  const { data, error } = await supabaseAdmin
+    .from("cart_items")
+    .upsert({
+      cart_id: cartResult.cart.id,
+      listing_id: body.listingId,
+      selected_specifications: body.selectedSpecifications || {},
+      quantity,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "cart_id,listing_id" })
+    .select()
+    .single();
+  if (error) return apiFailure("SERVER_ERROR");
+  return apiSuccess({ item: data });
+}
+
+async function ownedItem(actorId, itemId) {
+  if (!itemId) return null;
+  const { data } = await supabaseAdmin.from("cart_items").select("id, carts!inner(buyer_id)").eq("id", itemId).maybeSingle();
+  return data?.carts?.buyer_id === actorId ? data : null;
 }
 
 export async function PATCH(request) {
-  const { actorId, itemId, quantity } = await request.json();
-  if (!(await actor(actorId))) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
-  const { data: item } = await supabaseAdmin.from("cart_items").select("id, carts!inner(buyer_id)").eq("id", itemId).maybeSingle();
-  if (!item || item.carts.buyer_id !== actorId) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
-  if (Number(quantity) <= 0) await supabaseAdmin.from("cart_items").delete().eq("id", itemId);
-  else await supabaseAdmin.from("cart_items").update({ quantity: Number(quantity), updated_at: new Date().toISOString() }).eq("id", itemId);
-  return NextResponse.json({ success: true });
+  const body = await request.json().catch(() => null);
+  if (!body) return apiFailure("VALIDATION_ERROR");
+  const auth = await resolveActor(supabaseAdmin, body.actorId);
+  if (auth.response) return auth.response;
+  if (!(await ownedItem(auth.actor.id, body.itemId))) return apiFailure("NOT_FOUND", { message: "Cart item not found." });
+  const quantity = Number(body.quantity);
+  const query = quantity <= 0
+    ? supabaseAdmin.from("cart_items").delete().eq("id", body.itemId)
+    : supabaseAdmin.from("cart_items").update({ quantity: Math.min(99, Math.floor(quantity)), updated_at: new Date().toISOString() }).eq("id", body.itemId);
+  const { error } = await query;
+  if (error) return apiFailure("SERVER_ERROR");
+  return apiSuccess({ removed: quantity <= 0, quantity: quantity <= 0 ? 0 : Math.min(99, Math.floor(quantity)) });
 }
 
 export async function DELETE(request) {
-  const { actorId, itemId } = await request.json();
-  if (!(await actor(actorId))) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
-  const { data: item } = await supabaseAdmin.from("cart_items").select("id, carts!inner(buyer_id)").eq("id", itemId).maybeSingle();
-  if (!item || item.carts.buyer_id !== actorId) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
-  await supabaseAdmin.from("cart_items").delete().eq("id", itemId);
-  return NextResponse.json({ success: true });
+  const body = await request.json().catch(() => null);
+  if (!body) return apiFailure("VALIDATION_ERROR");
+  const auth = await resolveActor(supabaseAdmin, body.actorId);
+  if (auth.response) return auth.response;
+  if (!(await ownedItem(auth.actor.id, body.itemId))) return apiFailure("NOT_FOUND", { message: "Cart item not found." });
+  const { error } = await supabaseAdmin.from("cart_items").delete().eq("id", body.itemId);
+  if (error) return apiFailure("SERVER_ERROR");
+  return apiSuccess({ removed: true });
 }

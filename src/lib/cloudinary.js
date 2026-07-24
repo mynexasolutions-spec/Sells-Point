@@ -21,6 +21,14 @@ export async function uploadMedia(buffer, resourceType = "auto", folder = "sells
   });
 }
 
+export function paddedListingImageUrl(publicId) {
+  return cloudinary.url(publicId, {
+    secure: true,
+    resource_type: "image",
+    transformation: [{ width: 1080, height: 1920, crop: "pad", background: "auto", quality: "auto", fetch_format: "auto" }],
+  });
+}
+
 export async function listCategoryImages() {
   try {
     const result = await cloudinary.search

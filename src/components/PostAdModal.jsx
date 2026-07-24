@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { X, Upload, Sparkles, ChevronLeft, ChevronRight, Check, Film, ImagePlus, LocateFixed } from "lucide-react";
 import { useApp, CONDITIONS } from "@/context/AppContext";
+import ListingMedia from "@/components/ListingMedia";
+import { useListingLocation } from "@/hooks/useListingLocation";
 
 const STEPS = ["Details", "Media", "Pricing & Boost", "Review"];
 
@@ -12,9 +14,9 @@ async function uploadFile(file) {
   formData.append("file", file);
   formData.append("folder", "sells-point/products");
   const res = await fetch("/api/upload", { method: "POST", body: formData });
-  if (!res.ok) throw new Error("Upload failed");
-  const { url } = await res.json();
-  return url;
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(payload.error || "Upload failed");
+  return payload;
 }
 
 function SpecificationInputs({ specifications, onChange }) {
@@ -30,7 +32,11 @@ export default function PostAdModal({ isOpen, onClose, adminMode = false }) {
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
   const [detailsError, setDetailsError] = useState("");
+  const [mediaWarning, setMediaWarning] = useState("");
+  const [mediaByUrl, setMediaByUrl] = useState({});
+  const locationLookup = useListingLocation();
   const [form, setForm] = useState({
     title: "",
     category: "",
@@ -54,7 +60,10 @@ export default function PostAdModal({ isOpen, onClose, adminMode = false }) {
     setStep(0);
     setSubmitted(null);
     setSubmitError("");
+    setFieldErrors({});
     setDetailsError("");
+    setMediaWarning("");
+    setMediaByUrl({});
     setForm({
       title: "",
       category: "",
@@ -81,8 +90,13 @@ export default function PostAdModal({ isOpen, onClose, adminMode = false }) {
     if (files.length === 0) return;
     setUploading(true);
     try {
-      const urls = await Promise.all(files.map(uploadFile));
-      set({ images: [...form.images, ...urls] });
+      const uploads = await Promise.all(files.map(uploadFile));
+      set({ images: [...form.images, ...uploads.map((upload) => upload.url)] });
+      setMediaByUrl((current) => ({ ...current, ...Object.fromEntries(uploads.map((upload) => [upload.url, upload])) }));
+      const warning = uploads.find((upload) => upload.warning)?.warning;
+      if (warning) setMediaWarning(warning);
+    } catch (error) {
+      setSubmitError(error.message || "Failed to upload an image.");
     } finally {
       setUploading(false);
     }
@@ -93,8 +107,8 @@ export default function PostAdModal({ isOpen, onClose, adminMode = false }) {
     if (!file) return;
     setUploading(true);
     try {
-      const url = await uploadFile(file);
-      set({ video: url });
+      const upload = await uploadFile(file);
+      set({ video: upload.url });
     } finally {
       setUploading(false);
     }
@@ -102,24 +116,11 @@ export default function PostAdModal({ isOpen, onClose, adminMode = false }) {
 
   const removeImage = (idx) => set({ images: form.images.filter((_, i) => i !== idx) });
 
-  const useCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      setSubmitError("Location is not supported in this browser.");
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        set({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          location: form.location || "Current location",
-        });
-        setSubmitError("");
-      },
-      () => setSubmitError("Unable to access your location. You can still enter it manually."),
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-  };
+  const useCurrentLocation = () => locationLookup.locate((result) => set({
+    latitude: result.latitude,
+    longitude: result.longitude,
+    location: result.displayName,
+  }));
 
   const canProceed = () => {
     if (step === 0) return form.title.trim() && form.description.trim() && form.category;
@@ -138,18 +139,27 @@ export default function PostAdModal({ isOpen, onClose, adminMode = false }) {
 
   const handleSubmit = async () => {
     setSubmitError("");
-    if (!currentUser?.verified) {
-      setSubmitError("A verified account is required before posting an ad.");
+    setFieldErrors({});
+    if (!currentUser) {
+      setSubmitError("Please sign in before publishing your ad.");
+      return;
+    }
+    if (currentUser.isBanned) {
+      setSubmitError("This account has been suspended.");
       return;
     }
     setSubmitting(true);
     try {
-      const listing = await (adminMode ? createAdminListing(form) : addListing(form));
+      const result = await (adminMode ? createAdminListing(form) : addListing(form));
+      const listing = adminMode ? result : result?.listing;
       if (!listing) {
-        setSubmitError("Unable to publish this ad. Check your account verification and try again.");
+        setSubmitError(result?.error || "Unable to publish this ad. Your draft has been kept so you can try again.");
+        setFieldErrors(result?.fieldErrors || {});
         return;
       }
       setSubmitted(listing);
+    } catch {
+      setSubmitError("Unable to publish this ad. Your draft has been kept so you can try again.");
     } finally {
       setSubmitting(false);
     }
@@ -275,6 +285,7 @@ export default function PostAdModal({ isOpen, onClose, adminMode = false }) {
                         ))}
                       </select>
                     </div>
+                    {mediaWarning && <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{mediaWarning}</p>}
                   </div>
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-ink-700">
@@ -296,11 +307,11 @@ export default function PostAdModal({ isOpen, onClose, adminMode = false }) {
                     <div className="flex gap-2">
                       <input
                         value={form.location}
-                        onChange={(e) => set({ location: e.target.value })}
+                        onChange={(e) => set({ location: e.target.value, latitude: null, longitude: null })}
                         placeholder="City, Country"
                         className="input-field flex-1"
                       />
-                      <button type="button" onClick={useCurrentLocation} className="btn-secondary shrink-0 px-3">
+                      <button type="button" onClick={useCurrentLocation} disabled={locationLookup.loading} className="btn-secondary shrink-0 px-3" aria-label="Use live location">
                         <LocateFixed size={16} />
                       </button>
                     </div>
@@ -311,9 +322,11 @@ export default function PostAdModal({ isOpen, onClose, adminMode = false }) {
                         {subcategories.filter((s) => s.categoryId === form.category).map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
                       </select>
                     </div>
-                    {form.latitude && form.longitude && (
+                    {form.latitude != null && form.longitude != null && (
                       <p className="mt-1 text-xs text-brand-600">Nearby discovery enabled for this listing.</p>
                     )}
+                    {locationLookup.message && <p className={`mt-1 text-xs ${locationLookup.kind === "error" ? "text-red-600" : "text-brand-700"}`} role={locationLookup.kind === "error" ? "alert" : "status"}>{locationLookup.message}</p>}
+                    <p className="mt-1 text-[11px] text-ink-400">Location data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="underline">OpenStreetMap contributors</a></p>
                   </div>
                   {detailsError && <p className="text-sm font-medium text-red-600">{detailsError}</p>}
                 </div>
@@ -325,10 +338,13 @@ export default function PostAdModal({ isOpen, onClose, adminMode = false }) {
                     <label className="mb-1.5 block text-sm font-medium text-ink-700">
                       Photos <span className="text-ink-400">(up to 6)</span>
                     </label>
+                    <p className="mb-3 rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-800">
+                      For the best result, upload photos in a 9:16 portrait ratio. Other shapes will be fitted completely inside the frame.
+                    </p>
                     <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
                       {form.images.map((src, idx) => (
-                        <div key={idx} className="group relative aspect-square overflow-hidden rounded-xl border border-ink-100">
-                          <img src={src} alt="" className="h-full w-full object-contain bg-ink-50" />
+                        <div key={idx} className="group relative">
+                          <ListingMedia src={src} metadata={mediaByUrl[src]} alt={`Listing photo ${idx + 1}`} className="rounded-xl border border-ink-100" />
                           <button
                             onClick={() => removeImage(idx)}
                             className="absolute right-1 top-1 rounded-full bg-ink-950/70 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100"
@@ -338,12 +354,12 @@ export default function PostAdModal({ isOpen, onClose, adminMode = false }) {
                         </div>
                       ))}
                       {form.images.length < 6 && (
-                        <label className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-ink-200 text-ink-400 hover:border-brand-400 hover:text-brand-500">
+                        <label className="flex aspect-[9/16] cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-ink-200 text-ink-400 hover:border-brand-400 hover:text-brand-500">
                           <ImagePlus size={20} />
                           <span className="text-[11px]">{uploading ? "Uploading..." : "Add photo"}</span>
                           <input
                             type="file"
-                            accept="image/*"
+                            accept="image/jpeg,image/png,image/webp,image/avif"
                             multiple
                             className="hidden"
                             disabled={uploading}
@@ -459,7 +475,7 @@ export default function PostAdModal({ isOpen, onClose, adminMode = false }) {
                 <div className="space-y-4">
                   <div className="overflow-hidden rounded-2xl border border-ink-100">
                     {form.images[0] && (
-                      <img src={form.images[0]} alt="" className="h-44 w-full object-contain bg-ink-50" />
+                      <ListingMedia src={form.images[0]} metadata={mediaByUrl[form.images[0]]} alt={form.title} className="mx-auto w-full max-w-[16rem]" expandable />
                     )}
                     <div className="p-4">
                       <h4 className="font-display font-bold text-ink-900">{form.title}</h4>
@@ -477,14 +493,14 @@ export default function PostAdModal({ isOpen, onClose, adminMode = false }) {
                       ? "Review the details above, then publish this listing. You can manage it from this screen."
                       : "Review the details above, then publish your ad. You can edit or mark it sold anytime from your dashboard."}
                   </p>
-                  {!adminMode && !currentUser?.verified && (
-                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                      A verified account is required before posting an ad.
-                    </div>
-                  )}
                   {submitError && (
-                    <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
                       {submitError}
+                      {Object.keys(fieldErrors).length > 0 && (
+                        <ul className="mt-2 list-disc space-y-1 pl-5">
+                          {Object.entries(fieldErrors).map(([field, message]) => <li key={field}><span className="font-semibold capitalize">{field.replace(/([A-Z])/g, " $1")}:</span> {message}</li>)}
+                        </ul>
+                      )}
                     </div>
                   )}
                 </div>
@@ -509,7 +525,7 @@ export default function PostAdModal({ isOpen, onClose, adminMode = false }) {
                 Continue <ChevronRight size={16} />
               </button>
             ) : (
-              <button onClick={handleSubmit} disabled={submitting || !currentUser?.verified} className="btn-primary">
+              <button onClick={handleSubmit} disabled={submitting || !currentUser} className="btn-primary">
                 {submitting ? "Publishing..." : "Publish Ad"} <Check size={16} />
               </button>
             )}

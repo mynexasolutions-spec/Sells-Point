@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { ChevronLeft, MessageCircle } from "lucide-react";
+import { ChevronLeft, Loader2, MessageCircle, RefreshCw } from "lucide-react";
 import { useApp } from "@/context/AppContext";
+import { useSiteChrome } from "@/context/SiteChromeContext";
 import ChatWindow from "@/components/ChatWindow";
 
 function timeAgo(ts) {
@@ -18,8 +18,18 @@ function timeAgo(ts) {
 }
 
 export default function ChatPage() {
-  const { currentUser, userChats, getUserById, getListingById, markChatAsRead, getUnreadCount } = useApp();
-  const router = useRouter();
+  const {
+    currentUser,
+    userResolved,
+    userChats,
+    chatLoading,
+    chatError,
+    retryUserChats,
+    getUserById,
+    getListingById,
+    markChatAsRead,
+  } = useApp();
+  const { openAuth } = useSiteChrome();
   const [activeChatId, setActiveChatId] = useState(null);
   const [mobileConversationOpen, setMobileConversationOpen] = useState(false);
 
@@ -28,16 +38,13 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
-    if (!currentUser) {
-      router.push("/");
-    }
-  }, [currentUser, router]);
-
-  useEffect(() => {
-    if (!activeChatId && userChats.length > 0) {
+    if (userChats.length === 0) {
+      setActiveChatId(null);
+      setMobileConversationOpen(false);
+    } else if (!userChats.some((chat) => chat.id === activeChatId)) {
       setActiveChatId(userChats[0].id);
     }
-  }, [userChats, activeChatId]);
+  }, [userChats, activeChatId, currentUser?.id]);
 
   useEffect(() => {
     if (activeChatId) {
@@ -45,14 +52,46 @@ export default function ChatPage() {
     }
   }, [activeChatId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!currentUser) return null;
+  if (!userResolved) {
+    return <div className="page-container grid min-h-[50vh] place-items-center"><Loader2 className="animate-spin text-brand-600" aria-label="Loading account" /></div>;
+  }
+
+  if (!currentUser) {
+    return (
+      <div className="page-container grid min-h-[55vh] place-items-center py-12">
+        <section className="card max-w-md p-7 text-center" aria-labelledby="chat-login-title">
+          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-brand-50 text-brand-700"><MessageCircle /></span>
+          <h1 id="chat-login-title" className="mt-4 font-display text-2xl font-bold text-ink-900">Sign in to see your messages</h1>
+          <p className="mt-2 text-sm leading-6 text-ink-500">Your conversations stay here. After signing in, you’ll return to Chat automatically.</p>
+          <button type="button" onClick={() => openAuth()} className="btn-primary mt-6 w-full">Sign in to Chat</button>
+        </section>
+      </div>
+    );
+  }
 
   return (
-    <div className="page-container">
-      <h1 className="mb-6 font-display text-2xl font-bold text-ink-900">Messages</h1>
-      <div className="grid h-[calc(100dvh-10rem)] min-h-[32rem] rounded-2xl border border-ink-100 shadow-soft md:h-[70vh] md:grid-cols-3">
+    <div className="page-container flex h-[calc(100dvh-10.625rem-env(safe-area-inset-bottom))] min-h-0 flex-col py-3 md:block md:h-auto md:py-8">
+      <h1
+        className={`mb-3 font-display text-2xl font-bold text-ink-900 md:mb-6 ${
+          mobileConversationOpen ? "hidden md:block" : "block"
+        }`}
+      >
+        Messages
+      </h1>
+      <div className="grid min-h-0 flex-1 rounded-2xl border border-ink-100 shadow-soft md:h-[70vh] md:min-h-[32rem] md:grid-cols-3">
         <div className={`${mobileConversationOpen ? "hidden" : "flex"} flex-col overflow-hidden md:col-span-1 md:flex md:border-r`}>
-          {userChats.length === 0 ? (
+          {chatLoading ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-sm text-ink-500">
+              <Loader2 className="animate-spin text-brand-600" />
+              Loading conversations…
+            </div>
+          ) : chatError ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm text-ink-500" role="alert">
+              <MessageCircle className="text-red-400" />
+              <p>{chatError}</p>
+              <button type="button" onClick={retryUserChats} className="btn-secondary"><RefreshCw size={15} /> Try again</button>
+            </div>
+          ) : userChats.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-sm text-ink-400">
               <MessageCircle size={28} />
               No conversations yet. Chat with a seller from any listing page.
@@ -72,10 +111,10 @@ export default function ChatPage() {
                       activeChatId === chat.id ? "bg-brand-50" : ""
                     }`}
                   >
-                    <img src={other?.avatar} alt="" className="h-11 w-11 shrink-0 rounded-full object-cover" />
+                    {other?.avatar ? <img src={other.avatar} alt="" className="h-11 w-11 shrink-0 rounded-full object-cover" /> : <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-50 font-bold text-brand-700">{other?.name?.[0] || "?"}</span>}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between">
-                        <p className="truncate text-sm font-semibold text-ink-900">{other?.name}</p>
+                        <p className="truncate text-sm font-semibold text-ink-900">{other?.name || "SellsPoint user"}</p>
                         {last && <span className="shrink-0 text-[11px] text-ink-400">{timeAgo(last.createdAt)}</span>}
                       </div>
                       <p className="truncate text-xs text-ink-500">{listing?.title}</p>
@@ -89,11 +128,13 @@ export default function ChatPage() {
             </div>
           )}
         </div>
-        <div className={`${mobileConversationOpen ? "block" : "hidden"} overflow-hidden md:col-span-2 md:block`}>
-          <button type="button" onClick={() => setMobileConversationOpen(false)} className="flex h-11 items-center gap-1 px-3 text-sm font-semibold text-ink-600 hover:bg-ink-50 md:hidden">
+        <div className={`${mobileConversationOpen ? "flex" : "hidden"} min-h-0 flex-col overflow-hidden md:col-span-2 md:flex`}>
+          <button type="button" onClick={() => setMobileConversationOpen(false)} className="flex h-11 shrink-0 items-center gap-1 border-b border-ink-100 px-3 text-sm font-semibold text-ink-600 hover:bg-ink-50 md:hidden">
             <ChevronLeft size={18} /> Conversations
           </button>
-          <ChatWindow chatId={activeChatId} />
+          <div className="min-h-0 flex-1">
+            <ChatWindow chatId={activeChatId} />
+          </div>
         </div>
       </div>
     </div>

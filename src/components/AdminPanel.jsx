@@ -30,11 +30,14 @@ import {
   LogOut,
   Home,
   Search,
+  Inbox,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import BrandLogo from "@/components/BrandLogo";
 import EditListingModal from "@/components/EditListingModal";
 import PostAdModal from "@/components/PostAdModal";
+import AdminEnquiries from "@/components/admin/AdminEnquiries";
+import ListingMedia from "@/components/ListingMedia";
 
 const TABS = [
   { id: "analytics", label: "Analytics", group: "Main", icon: BarChart3, subtitle: "Marketplace performance and community health at a glance." },
@@ -42,6 +45,7 @@ const TABS = [
   { id: "listings", label: "Listings", group: "Operations", icon: LayoutList, subtitle: "Review, moderate, and feature marketplace listings." },
   { id: "users", label: "Users", group: "Operations", icon: Users, subtitle: "Manage member access, warnings, and account status." },
   { id: "reports", label: "Reports", group: "Operations", icon: Flag, subtitle: "Investigate and resolve community reports." },
+  { id: "enquiries", label: "Enquiries", group: "Operations", icon: Inbox, subtitle: "Review contact requests, record follow-up, and manage resolution status." },
   { id: "chats", label: "Chat Monitor", group: "Operations", icon: MessageCircle, subtitle: "Monitor marketplace conversations for safety." },
   { id: "categories", label: "Categories", group: "Content", icon: Tags, subtitle: "Organize the marketplace and category imagery." },
   { id: "announcements", label: "Announcements", group: "Content", icon: Megaphone, subtitle: "Publish important updates to all users." },
@@ -174,11 +178,11 @@ export default function AdminPanel() {
         <div className="space-y-6">
           <div className="flex items-center justify-between"><div><h3 className="flex items-center gap-2 font-display font-bold text-ink-900"><Sparkles size={18} className="text-amber-500" /> Pending Featured Ad Approvals</h3><p className="mt-1 text-sm text-ink-500">Accept a request by setting its mock promotion price, or reject it.</p></div><span className="badge-gold">{pendingFeatured.length} pending</span></div>
           {pendingFeatured.length === 0 ? <div className="card p-10 text-center"><Sparkles size={30} className="mx-auto mb-3 text-ink-300"/><p className="font-semibold text-ink-700">No pending promotion requests</p><p className="mt-1 text-sm text-ink-400">New featured-ad requests will appear here.</p></div> : <div className="space-y-3">{pendingFeatured.map((listing) => { const seller = getUserById(listing.sellerId); return <div key={listing.id} className="card flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
-            {listing.images?.[0] ? <img src={listing.images[0]} alt="" className="h-24 w-full rounded-xl bg-ink-50 object-contain sm:h-20 sm:w-24"/> : <div className="flex h-20 w-24 items-center justify-center rounded-xl bg-ink-100 text-ink-400"><Package size={22}/></div>}
+            {listing.images?.[0] ? <ListingMedia src={listing.images[0]} alt="" className="w-full rounded-xl sm:w-16"/> : <div className="flex aspect-[9/16] w-16 items-center justify-center rounded-xl bg-ink-100 text-ink-400"><Package size={22}/></div>}
             <div className="min-w-0 flex-1"><Link href={`/product/${listing.id}`} className="font-semibold text-ink-900 hover:underline">{listing.title}</Link><p className="mt-1 text-sm text-ink-500">{formatPrice(listing.price)} · Seller: {seller?.name || "Unknown"}</p><p className="mt-1 text-xs text-ink-400">Requested {listing.promotionRequestedAt ? new Date(listing.promotionRequestedAt).toLocaleString("en-IN") : "recently"}</p></div>
             <div className="flex shrink-0 gap-2"><button onClick={async()=>{const value=window.prompt("Set the mock promotion price in whole INR rupees");if(value!==null){const result=await setFeaturedStatus(listing.id,"awaiting_payment",Number(value));if(!result?.success)window.alert(result?.error||"Unable to send quote.");}}} className="btn-primary px-3 py-2 text-sm"><Check size={14}/> Accept & Set Price</button><button onClick={async()=>{const result=await setFeaturedStatus(listing.id,"rejected");if(!result?.success)window.alert(result?.error||"Unable to reject request.");}} className="btn-secondary px-3 py-2 text-sm"><X size={14}/> Reject</button></div>
           </div>;})}</div>}
-          <div><h3 className="mb-3 font-display font-bold text-ink-900">Awaiting Mock Payment</h3><div className="space-y-2">{listings.filter((listing)=>listing.featuredStatus==="awaiting_payment").map((listing)=><div key={listing.id} className="flex items-center gap-3 rounded-xl border border-ink-100 bg-white p-3">{listing.images?.[0] && <img src={listing.images[0]} alt="" className="h-12 w-12 rounded-lg bg-ink-50 object-contain"/>}<div className="flex-1"><p className="font-medium text-ink-900">{listing.title}</p><p className="text-xs text-ink-500">Quote: {formatPrice(listing.promotionPrice)} · awaiting seller mock payment</p></div><span className="badge bg-blue-100 text-blue-700">Awaiting payment</span></div>)}{!listings.some((listing)=>listing.featuredStatus==="awaiting_payment")&&<p className="text-sm text-ink-400">No quotes awaiting payment.</p>}</div></div>
+          <div><h3 className="mb-3 font-display font-bold text-ink-900">Awaiting Mock Payment</h3><div className="space-y-2">{listings.filter((listing)=>listing.featuredStatus==="awaiting_payment").map((listing)=><div key={listing.id} className="flex items-center gap-3 rounded-xl border border-ink-100 bg-white p-3">{listing.images?.[0] && <ListingMedia src={listing.images[0]} alt="" className="w-10 shrink-0 rounded-lg"/>}<div className="flex-1"><p className="font-medium text-ink-900">{listing.title}</p><p className="text-xs text-ink-500">Quote: {formatPrice(listing.promotionPrice)} · awaiting seller mock payment</p></div><span className="badge bg-blue-100 text-blue-700">Awaiting payment</span></div>)}{!listings.some((listing)=>listing.featuredStatus==="awaiting_payment")&&<p className="text-sm text-ink-400">No quotes awaiting payment.</p>}</div></div>
         </div>
       )}
 
@@ -194,11 +198,7 @@ export default function AdminPanel() {
                   const seller = getUserById(l.sellerId);
                   return (
                     <div key={l.id} className="card flex items-center gap-4 p-4">
-                      <img
-                        src={l.images?.[0]}
-                        alt=""
-                        className="h-16 w-16 rounded-xl object-cover"
-                      />
+                      <ListingMedia src={l.images?.[0]} alt="" className="w-12 rounded-xl" />
                       <div className="flex-1">
                         <Link href={`/product/${l.id}`} className="font-semibold text-ink-900 hover:underline">
                           {l.title}
@@ -263,7 +263,7 @@ export default function AdminPanel() {
                       <tr key={l.id}>
                         <td className="max-w-xs px-4 py-3">
                           <Link href={`/product/${l.id}`} className="flex items-center gap-3 hover:underline">
-                            {l.images?.[0] ? <img src={l.images[0]} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" /> : <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-ink-100 text-ink-400"><Package size={18} /></div>}
+                            {l.images?.[0] ? <ListingMedia src={l.images[0]} alt="" className="w-10 shrink-0 rounded-lg" /> : <div className="flex aspect-[9/16] w-10 shrink-0 items-center justify-center rounded-lg bg-ink-100 text-ink-400"><Package size={18} /></div>}
                             <span className="truncate">{l.title}</span>
                           </Link>
                         </td>
@@ -444,6 +444,8 @@ export default function AdminPanel() {
           )}
         </div>
       )}
+
+      {tab === "enquiries" && <AdminEnquiries />}
 
       {tab === "categories" && (
         <div className="space-y-6">
